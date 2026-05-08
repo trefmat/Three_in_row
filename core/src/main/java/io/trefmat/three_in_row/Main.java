@@ -23,12 +23,14 @@ public class Main extends ApplicationAdapter {
     private static final int ROCKET_HORIZONTAL = 100;
     private static final int ROCKET_VERTICAL = 200;
     private static final int BOMB = 300;
+    private static final int LIGHTNING = 400;
     private static final float INVALID_FLASH_TIME = 0.25f;
     private static final float SWAP_TIME = 0.18f;
     private static final float FALL_TIME = 0.28f;
     private static final float INVALID_SWAP_TIME = 0.13f;
     private static final float MATCH_CLEAR_TIME = 0.22f;
     private static final float BOOSTER_BLAST_TIME = 0.36f;
+    private static final float RESTART_ANIMATION_TIME = 1.05f;
 
     private final int[][] board = new int[BOARD_SIZE][BOARD_SIZE];
     private final float[][] drawRows = new float[BOARD_SIZE][BOARD_SIZE];
@@ -46,12 +48,14 @@ public class Main extends ApplicationAdapter {
     private final Texture[] rocketHorizontalTextures = new Texture[GEM_TYPES];
     private final Texture[] rocketVerticalTextures = new Texture[GEM_TYPES];
     private final Texture[] bombTextures = new Texture[GEM_TYPES];
+    private final Texture[] lightningTextures = new Texture[GEM_TYPES];
 
     private SpriteBatch batch;
     private ShapeRenderer shapes;
     private BitmapFont font;
     private GlyphLayout glyphLayout;
     private Texture background;
+    private Texture restartIcon;
 
     private int selectedRow = -1;
     private int selectedCol = -1;
@@ -66,15 +70,28 @@ public class Main extends ApplicationAdapter {
     private int swapColA;
     private int swapRowB;
     private int swapColB;
+    private int lightningTargetType = -1;
+    private boolean lightningClearsBoard;
     private int boosterPreferredRow = -1;
     private int boosterPreferredCol = -1;
     private int boosterFallbackRow = -1;
     private int boosterFallbackCol = -1;
     private int pendingRemoved;
+    private int touchStartX;
+    private int touchStartY;
+    private int touchStartRow = -1;
+    private int touchStartCol = -1;
+    private int activeTouchPointer = -1;
+    private boolean swipeHandled;
+    private boolean restartAnimating;
+    private boolean restartBoardRebuilt;
+    private float restartAnimationTimer;
 
     private enum AnimationState {
         IDLE,
         VALID_SWAP,
+        LIGHTNING_SWAP,
+        BOOSTER_SWAP,
         INVALID_SWAP_OUT,
         INVALID_SWAP_BACK,
         MATCH_CLEAR,
@@ -87,9 +104,11 @@ public class Main extends ApplicationAdapter {
         batch = new SpriteBatch();
         shapes = new ShapeRenderer();
         font = new BitmapFont();
-        font.getData().setScale(1.35f);
+        font.getData().setScale(1f);
         glyphLayout = new GlyphLayout();
         background = createBackgroundTexture();
+        restartIcon = new Texture(Gdx.files.internal("restart.png"));
+        restartIcon.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
 
         Color[] colors = {
             Color.valueOf("29D6FF"),
@@ -99,11 +118,20 @@ public class Main extends ApplicationAdapter {
             Color.valueOf("A967FF"),
             Color.valueOf("FF8B3D")
         };
+        String[] gemFiles = {
+            "gems/blue.png",
+            "gems/green.png",
+            "gems/red.png",
+            "gems/yellow.png",
+            "gems/purple.png",
+            "gems/orange.png"
+        };
         for (int i = 0; i < GEM_TYPES; i++) {
-            gemTextures[i] = createGemTexture(colors[i], i);
+            gemTextures[i] = loadGemTexture(gemFiles[i]);
             rocketHorizontalTextures[i] = createRocketTexture(colors[i], true);
             rocketVerticalTextures[i] = createRocketTexture(colors[i], false);
             bombTextures[i] = createBombTexture(colors[i]);
+            lightningTextures[i] = createLightningTexture(colors[i]);
         }
 
         resetBoard();
@@ -111,7 +139,25 @@ public class Main extends ApplicationAdapter {
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
                 if (button == Input.Buttons.LEFT || button == -1) {
-                    handleBoardTap(screenX, screenY);
+                    beginTouch(screenX, screenY, pointer);
+                    return true;
+                }
+                return false;
+            }
+
+            @Override
+            public boolean touchDragged(int screenX, int screenY, int pointer) {
+                if (pointer == activeTouchPointer) {
+                    handleSwipeDrag(screenX, screenY);
+                    return true;
+                }
+                return false;
+            }
+
+            @Override
+            public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+                if (pointer == activeTouchPointer) {
+                    finishTouch(screenX, screenY);
                     return true;
                 }
                 return false;
@@ -120,7 +166,7 @@ public class Main extends ApplicationAdapter {
             @Override
             public boolean keyDown(int keycode) {
                 if (keycode == Input.Keys.R) {
-                    resetBoard();
+                    beginRestartAnimation();
                     return true;
                 }
                 return false;
@@ -132,6 +178,7 @@ public class Main extends ApplicationAdapter {
     public void render() {
         float delta = Gdx.graphics.getDeltaTime();
         invalidFlash = Math.max(0f, invalidFlash - delta);
+        updateRestartAnimation(delta);
         updateAnimation(delta);
 
         Gdx.gl.glClearColor(0.045f, 0.05f, 0.075f, 1f);
@@ -144,7 +191,17 @@ public class Main extends ApplicationAdapter {
     }
 
     private void handleBoardTap(int screenX, int screenY) {
+        if (restartAnimating) {
+            return;
+        }
+
         if (animationState != AnimationState.IDLE) {
+            return;
+        }
+
+        int worldY = Gdx.graphics.getHeight() - screenY;
+        if (isRestartButtonHit(screenX, worldY)) {
+            beginRestartAnimation();
             return;
         }
 
@@ -182,13 +239,102 @@ public class Main extends ApplicationAdapter {
         }
     }
 
+    private void beginTouch(int screenX, int screenY, int pointer) {
+        activeTouchPointer = pointer;
+        touchStartX = screenX;
+        touchStartY = screenY;
+        touchStartCol = screenToCol(screenX);
+        touchStartRow = screenToRow(screenY);
+        swipeHandled = false;
+    }
+
+    private void finishTouch(int screenX, int screenY) {
+        if (!swipeHandled) {
+            handleBoardTap(screenX, screenY);
+        }
+        activeTouchPointer = -1;
+        touchStartRow = -1;
+        touchStartCol = -1;
+        swipeHandled = false;
+    }
+
+    private void handleSwipeDrag(int screenX, int screenY) {
+        if (swipeHandled || animationState != AnimationState.IDLE || !isInside(touchStartRow, touchStartCol)) {
+            return;
+        }
+
+        float deltaX = screenX - touchStartX;
+        float deltaY = screenY - touchStartY;
+        float threshold = cellSize() * 0.34f;
+        if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < threshold) {
+            return;
+        }
+
+        int targetRow = touchStartRow;
+        int targetCol = touchStartCol;
+        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+            targetCol += deltaX > 0f ? 1 : -1;
+        } else {
+            targetRow += deltaY < 0f ? 1 : -1;
+        }
+
+        if (!isInside(targetRow, targetCol)) {
+            swipeHandled = true;
+            selectedRow = -1;
+            selectedCol = -1;
+            statusText = "Swipe inside the board";
+            return;
+        }
+
+        selectedRow = -1;
+        selectedCol = -1;
+        beginSwap(touchStartRow, touchStartCol, targetRow, targetCol);
+        swipeHandled = true;
+    }
+
     private void beginSwap(int rowA, int colA, int rowB, int colB) {
         swapRowA = rowA;
         swapColA = colA;
         swapRowB = rowB;
         swapColB = colB;
 
+        boolean lightningSwap = isLightning(board[rowA][colA]) || isLightning(board[rowB][colB]);
+        boolean boosterSwap = isBooster(board[rowA][colA]) && isBooster(board[rowB][colB]);
+        if (lightningSwap) {
+            lightningClearsBoard = isLightning(board[rowA][colA]) && isLightning(board[rowB][colB]);
+            if (lightningClearsBoard) {
+                lightningTargetType = -1;
+            } else if (isLightning(board[rowA][colA])) {
+                lightningTargetType = baseGemType(board[rowB][colB]);
+            } else {
+                lightningTargetType = baseGemType(board[rowA][colA]);
+            }
+        }
         swap(rowA, colA, rowB, colB);
+
+        if (lightningSwap) {
+            moves++;
+            drawRows[rowA][colA] = rowB;
+            drawCols[rowA][colA] = colB;
+            drawRows[rowB][colB] = rowA;
+            drawCols[rowB][colB] = colA;
+            captureAnimationStarts();
+            beginAnimation(AnimationState.LIGHTNING_SWAP, SWAP_TIME);
+            statusText = "Lightning charged";
+            return;
+        }
+
+        if (boosterSwap) {
+            moves++;
+            drawRows[rowA][colA] = rowB;
+            drawCols[rowA][colA] = colB;
+            drawRows[rowB][colB] = rowA;
+            drawCols[rowB][colB] = colA;
+            captureAnimationStarts();
+            beginAnimation(AnimationState.BOOSTER_SWAP, SWAP_TIME);
+            statusText = "Boosters combined";
+            return;
+        }
 
         boolean[][] matches = findMatches();
         if (!hasMatches(matches)) {
@@ -237,6 +383,32 @@ public class Main extends ApplicationAdapter {
         finishAnimationStep();
     }
 
+    private void beginRestartAnimation() {
+        restartAnimating = true;
+        restartBoardRebuilt = false;
+        restartAnimationTimer = 0f;
+        selectedRow = -1;
+        selectedCol = -1;
+    }
+
+    private void updateRestartAnimation(float delta) {
+        if (!restartAnimating) {
+            return;
+        }
+
+        restartAnimationTimer += delta;
+        if (!restartBoardRebuilt && restartAnimationProgress() >= 0.52f) {
+            restartBoardRebuilt = true;
+            resetBoard();
+            restartAnimating = true;
+        }
+        if (restartAnimationTimer >= RESTART_ANIMATION_TIME) {
+            restartAnimating = false;
+            restartBoardRebuilt = false;
+            restartAnimationTimer = 0f;
+        }
+    }
+
     private void finishAnimationStep() {
         if (animationState == AnimationState.INVALID_SWAP_OUT) {
             captureAnimationStarts();
@@ -254,6 +426,18 @@ public class Main extends ApplicationAdapter {
         if (animationState == AnimationState.VALID_SWAP) {
             syncDrawPositions();
             beginNextCascade();
+            return;
+        }
+
+        if (animationState == AnimationState.LIGHTNING_SWAP) {
+            syncDrawPositions();
+            beginLightningBlast();
+            return;
+        }
+
+        if (animationState == AnimationState.BOOSTER_SWAP) {
+            syncDrawPositions();
+            beginBoosterSwapBlast();
             return;
         }
 
@@ -474,7 +658,10 @@ public class Main extends ApplicationAdapter {
                 boolean same = col < BOARD_SIZE && sameGemType(board[row][col], board[row][runStart]);
                 if (!same) {
                     int runLength = col - runStart;
-                    if (board[row][runStart] != EMPTY && runLength >= 4) {
+                    if (board[row][runStart] != EMPTY && runLength >= 5) {
+                        int boosterCol = chooseBoosterCol(row, runStart, col);
+                        boosters[row][boosterCol] = makeLightning(baseGemType(board[row][runStart]));
+                    } else if (board[row][runStart] != EMPTY && runLength >= 4) {
                         int boosterCol = chooseBoosterCol(row, runStart, col);
                         if (boosters[row][boosterCol] == 0) {
                             boosters[row][boosterCol] = makeRocket(baseGemType(board[row][runStart]), true);
@@ -491,7 +678,10 @@ public class Main extends ApplicationAdapter {
                 boolean same = row < BOARD_SIZE && sameGemType(board[row][col], board[runStart][col]);
                 if (!same) {
                     int runLength = row - runStart;
-                    if (board[runStart][col] != EMPTY && runLength >= 4) {
+                    if (board[runStart][col] != EMPTY && runLength >= 5) {
+                        int boosterRow = chooseBoosterRow(col, runStart, row);
+                        boosters[boosterRow][col] = makeLightning(baseGemType(board[runStart][col]));
+                    } else if (board[runStart][col] != EMPTY && runLength >= 4) {
                         int boosterRow = chooseBoosterRow(col, runStart, row);
                         if (boosters[boosterRow][col] == 0) {
                             boosters[boosterRow][col] = makeRocket(baseGemType(board[runStart][col]), false);
@@ -508,17 +698,8 @@ public class Main extends ApplicationAdapter {
                 if (!matches[row][col]) {
                     continue;
                 }
-                if (isRocket(board[row][col])) {
-                    if (isHorizontalRocket(board[row][col])) {
-                        blastHorizontalRockets[row][col] = true;
-                    } else {
-                        blastVerticalRockets[row][col] = true;
-                    }
-                    markRocketBlast(cellsToClear, row, col);
-                    activatedBooster = true;
-                } else if (isBomb(board[row][col])) {
-                    blastBombs[row][col] = true;
-                    markBombBlast(cellsToClear, row, col);
+                if (isBooster(board[row][col])) {
+                    markBoosterBlast(cellsToClear, row, col);
                     activatedBooster = true;
                 }
             }
@@ -545,6 +726,76 @@ public class Main extends ApplicationAdapter {
         statusText = "Match cleared";
         beginAnimation(AnimationState.MATCH_CLEAR, MATCH_CLEAR_TIME);
         return -1;
+    }
+
+    private void beginBoosterSwapBlast() {
+        boolean[][] cellsToClear = new boolean[BOARD_SIZE][BOARD_SIZE];
+        boolean[][] matches = new boolean[BOARD_SIZE][BOARD_SIZE];
+        int[][] boosters = new int[BOARD_SIZE][BOARD_SIZE];
+        clearBlastEffects();
+
+        markBoosterBlast(cellsToClear, swapRowA, swapColA);
+        markBoosterBlast(cellsToClear, swapRowB, swapColB);
+
+        copyBooleanGrid(cellsToClear, pendingCellsToClear);
+        copyBooleanGrid(matches, pendingMatches);
+        copyIntGrid(boosters, pendingBoosters);
+        copyBooleanGrid(cellsToClear, blastCells);
+        pendingRemoved = countCells(cellsToClear);
+        clearBoosterPlacementHints();
+        statusText = "Booster blast";
+        beginAnimation(AnimationState.BOOSTER_BLAST, BOOSTER_BLAST_TIME);
+    }
+
+    private void beginLightningBlast() {
+        boolean[][] cellsToClear = new boolean[BOARD_SIZE][BOARD_SIZE];
+        boolean[][] matches = new boolean[BOARD_SIZE][BOARD_SIZE];
+        int[][] boosters = new int[BOARD_SIZE][BOARD_SIZE];
+        clearBlastEffects();
+
+        for (int row = 0; row < BOARD_SIZE; row++) {
+            for (int col = 0; col < BOARD_SIZE; col++) {
+                if (lightningClearsBoard || baseGemType(board[row][col]) == lightningTargetType) {
+                    cellsToClear[row][col] = true;
+                }
+            }
+        }
+        cellsToClear[swapRowA][swapColA] = true;
+        cellsToClear[swapRowB][swapColB] = true;
+
+        copyBooleanGrid(cellsToClear, pendingCellsToClear);
+        copyBooleanGrid(matches, pendingMatches);
+        copyIntGrid(boosters, pendingBoosters);
+        copyBooleanGrid(cellsToClear, blastCells);
+        pendingRemoved = countCells(cellsToClear);
+        lightningTargetType = -1;
+        lightningClearsBoard = false;
+        clearBoosterPlacementHints();
+        statusText = "Lightning strike";
+        beginAnimation(AnimationState.BOOSTER_BLAST, BOOSTER_BLAST_TIME);
+    }
+
+    private void markBoosterBlast(boolean[][] cellsToClear, int row, int col) {
+        if (isRocket(board[row][col])) {
+            if (isHorizontalRocket(board[row][col])) {
+                blastHorizontalRockets[row][col] = true;
+            } else {
+                blastVerticalRockets[row][col] = true;
+            }
+            markRocketBlast(cellsToClear, row, col);
+        } else if (isBomb(board[row][col])) {
+            blastBombs[row][col] = true;
+            markBombBlast(cellsToClear, row, col);
+        } else if (isLightning(board[row][col])) {
+            int gemType = baseGemType(board[row][col]);
+            for (int clearRow = 0; clearRow < BOARD_SIZE; clearRow++) {
+                for (int clearCol = 0; clearCol < BOARD_SIZE; clearCol++) {
+                    if (baseGemType(board[clearRow][clearCol]) == gemType) {
+                        cellsToClear[clearRow][clearCol] = true;
+                    }
+                }
+            }
+        }
     }
 
     private int applyPendingClear() {
@@ -966,9 +1217,21 @@ public class Main extends ApplicationAdapter {
                 }
                 boolean clearing = animationState == AnimationState.MATCH_CLEAR && pendingCellsToClear[row][col];
                 float localPadding = clearing ? padding + cell * 0.18f * clearEased : padding;
+                if (restartAnimating) {
+                    float cellWave = restartCellWave(row, col);
+                    if (restartBoardRebuilt) {
+                        localPadding += cell * 0.30f * (1f - Interpolation.smooth.apply(cellWave));
+                    } else {
+                        localPadding += cell * 0.28f * Interpolation.smooth.apply(cellWave);
+                    }
+                }
                 float size = cell - localPadding * 2f;
                 if (clearing) {
                     batch.setColor(1f, 1f, 1f, 1f - clearProgress * 0.55f);
+                } else if (restartAnimating) {
+                    float cellWave = restartCellWave(row, col);
+                    float alpha = restartBoardRebuilt ? cellWave : 1f - cellWave * 0.98f;
+                    batch.setColor(1f, 1f, 1f, alpha);
                 } else {
                     batch.setColor(Color.WHITE);
                 }
@@ -983,6 +1246,20 @@ public class Main extends ApplicationAdapter {
         }
         batch.setColor(Color.WHITE);
         batch.end();
+    }
+
+    private float restartCellWave(int row, int col) {
+        float progress = restartAnimationProgress();
+        float phaseProgress = restartBoardRebuilt
+            ? MathUtils.clamp((progress - 0.52f) / 0.48f, 0f, 1f)
+            : MathUtils.clamp(progress / 0.52f, 0f, 1f);
+        float eased = Interpolation.smooth.apply(phaseProgress);
+        float center = (BOARD_SIZE - 1) * 0.5f;
+        float maxDistance = BOARD_SIZE - 1f;
+        float distance = Math.abs(row - center) + Math.abs(col - center);
+        float normalizedDistance = distance / maxDistance;
+        float delay = restartBoardRebuilt ? (1f - normalizedDistance) * 0.30f : normalizedDistance * 0.36f;
+        return MathUtils.clamp((eased - delay) / (1f - delay), 0f, 1f);
     }
 
     private void drawBoosterEffects() {
@@ -1065,32 +1342,163 @@ public class Main extends ApplicationAdapter {
     }
 
     private void drawHud() {
-        String title = "CRYSTAL MATCH";
-        String stats = "Score: " + score + "   Moves: " + moves;
-        String hint = statusText + "     R - reset";
+        String scoreText = String.valueOf(score);
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         shapes.begin(ShapeRenderer.ShapeType.Filled);
-        shapes.setColor(0.03f, 0.04f, 0.065f, 0.72f);
-        shapes.rect(0f, Gdx.graphics.getHeight() - 76f, Gdx.graphics.getWidth(), 76f);
-        shapes.setColor(0.03f, 0.04f, 0.065f, 0.65f);
-        shapes.rect(0f, 0f, Gdx.graphics.getWidth(), 64f);
+        drawTopScorePanel();
+        drawRestartButtonShape();
+        drawScoreNumberShapes(scoreText);
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
+        drawRestartButtonIcon();
+    }
+
+    private void drawTopScorePanel() {
+        float height = topHudHeight();
+        shapes.setColor(0.03f, 0.04f, 0.065f, 0.72f);
+        shapes.rect(0f, Gdx.graphics.getHeight() - height, Gdx.graphics.getWidth(), height);
+        shapes.setColor(0.12f, 0.18f, 0.28f, 0.36f);
+        shapes.rect(Gdx.graphics.getWidth() * 0.18f, Gdx.graphics.getHeight() - height + height * 0.12f, Gdx.graphics.getWidth() * 0.64f, height * 0.76f);
+        shapes.setColor(0.35f, 0.62f, 1f, 0.20f);
+        shapes.rect(Gdx.graphics.getWidth() * 0.25f, Gdx.graphics.getHeight() - height + 3f, Gdx.graphics.getWidth() * 0.5f, 3f);
+    }
+
+    private void drawRestartButtonShape() {
+        float x = restartButtonX();
+        float y = restartButtonY();
+        float width = restartButtonWidth();
+        float height = restartButtonHeight();
+        float radius = height * 0.16f;
+
+        shapes.setColor(0f, 0f, 0f, 0.26f);
+        fillRoundedRect(x + 4f, y - 5f, width, height, radius);
+        shapes.setColor(0.045f, 0.055f, 0.075f, 0.98f);
+        fillRoundedRect(x, y, width, height, radius);
+    }
+
+    private void drawRestartButtonIcon() {
+        float x = restartButtonX();
+        float y = restartButtonY();
+        float height = restartButtonHeight();
+        float iconPadding = height * 0.08f;
+        float iconSize = height - iconPadding * 2f;
+        float centerX = x + height * 0.5f;
+        float centerY = y + height * 0.5f;
+        float rotation = restartAnimating ? -restartAnimationProgress() * 360f : 0f;
+
         batch.begin();
-        font.setColor(Color.valueOf("F8FBFF"));
-        glyphLayout.setText(font, title);
-        font.draw(batch, glyphLayout, (Gdx.graphics.getWidth() - glyphLayout.width) * 0.5f, Gdx.graphics.getHeight() - 20f);
-
-        font.setColor(Color.valueOf("B7C8FF"));
-        glyphLayout.setText(font, stats);
-        font.draw(batch, glyphLayout, (Gdx.graphics.getWidth() - glyphLayout.width) * 0.5f, Gdx.graphics.getHeight() - 52f);
-
-        font.setColor(invalidFlash > 0f ? Color.valueOf("FFB6BA") : Color.valueOf("B6BED4"));
-        glyphLayout.setText(font, hint);
-        font.draw(batch, glyphLayout, (Gdx.graphics.getWidth() - glyphLayout.width) * 0.5f, 39f);
+        batch.setColor(Color.WHITE);
+        batch.draw(
+            restartIcon,
+            centerX - iconSize * 0.5f,
+            centerY - iconSize * 0.5f,
+            iconSize * 0.5f,
+            iconSize * 0.5f,
+            iconSize,
+            iconSize,
+            1f,
+            1f,
+            rotation,
+            0,
+            0,
+            restartIcon.getWidth(),
+            restartIcon.getHeight(),
+            false,
+            false
+        );
+        batch.setColor(Color.WHITE);
         batch.end();
+    }
+
+    private float restartAnimationProgress() {
+        if (!restartAnimating) {
+            return 0f;
+        }
+        return Math.min(1f, restartAnimationTimer / RESTART_ANIMATION_TIME);
+    }
+
+    private void fillRoundedRect(float x, float y, float width, float height, float radius) {
+        shapes.rect(x + radius, y, width - radius * 2f, height);
+        shapes.rect(x, y + radius, width, height - radius * 2f);
+        shapes.circle(x + radius, y + radius, radius, 32);
+        shapes.circle(x + width - radius, y + radius, radius, 32);
+        shapes.circle(x + radius, y + height - radius, radius, 32);
+        shapes.circle(x + width - radius, y + height - radius, radius, 32);
+    }
+
+    private void drawScoreNumberShapes(String text) {
+        float digitHeight = MathUtils.clamp(topHudHeight() * 0.36f, 42f, 68f);
+        float digitWidth = digitHeight * 0.56f;
+        float gap = digitHeight * 0.18f;
+        float totalWidth = text.length() * digitWidth + Math.max(0, text.length() - 1) * gap;
+        float startX = (Gdx.graphics.getWidth() - totalWidth) * 0.5f;
+        float y = Gdx.graphics.getHeight() - topHudHeight() * 0.64f;
+
+        shapes.setColor(0f, 0f, 0f, 0.24f);
+        for (int i = 0; i < text.length(); i++) {
+            drawScoreDigit(text.charAt(i), startX + i * (digitWidth + gap) + 3f, y - 3f, digitWidth, digitHeight);
+        }
+        shapes.setColor(0.88f, 0.96f, 1f, 0.98f);
+        for (int i = 0; i < text.length(); i++) {
+            drawScoreDigit(text.charAt(i), startX + i * (digitWidth + gap), y, digitWidth, digitHeight);
+        }
+        shapes.setColor(0.38f, 0.74f, 1f, 0.28f);
+        shapes.rect(startX - gap * 0.6f, y - digitHeight * 0.12f, totalWidth + gap * 1.2f, 3f);
+    }
+
+    private void drawScoreDigit(char digit, float x, float y, float width, float height) {
+        boolean top = false;
+        boolean upperLeft = false;
+        boolean upperRight = false;
+        boolean middle = false;
+        boolean lowerLeft = false;
+        boolean lowerRight = false;
+        boolean bottom = false;
+
+        if (digit == '0') {
+            top = upperLeft = upperRight = lowerLeft = lowerRight = bottom = true;
+        } else if (digit == '1') {
+            upperRight = lowerRight = true;
+        } else if (digit == '2') {
+            top = upperRight = middle = lowerLeft = bottom = true;
+        } else if (digit == '3') {
+            top = upperRight = middle = lowerRight = bottom = true;
+        } else if (digit == '4') {
+            upperLeft = upperRight = middle = lowerRight = true;
+        } else if (digit == '5') {
+            top = upperLeft = middle = lowerRight = bottom = true;
+        } else if (digit == '6') {
+            top = upperLeft = middle = lowerLeft = lowerRight = bottom = true;
+        } else if (digit == '7') {
+            top = upperRight = lowerRight = true;
+        } else if (digit == '8') {
+            top = upperLeft = upperRight = middle = lowerLeft = lowerRight = bottom = true;
+        } else if (digit == '9') {
+            top = upperLeft = upperRight = middle = lowerRight = bottom = true;
+        }
+
+        float thickness = Math.max(5f, height * 0.13f);
+        if (top) drawHorizontalSegment(x, y + height - thickness, width, thickness);
+        if (middle) drawHorizontalSegment(x, y + (height - thickness) * 0.5f, width, thickness);
+        if (bottom) drawHorizontalSegment(x, y, width, thickness);
+        if (upperLeft) drawVerticalSegment(x, y + height * 0.5f, thickness, height * 0.5f);
+        if (upperRight) drawVerticalSegment(x + width - thickness, y + height * 0.5f, thickness, height * 0.5f);
+        if (lowerLeft) drawVerticalSegment(x, y, thickness, height * 0.5f);
+        if (lowerRight) drawVerticalSegment(x + width - thickness, y, thickness, height * 0.5f);
+    }
+
+    private void drawHorizontalSegment(float x, float y, float width, float thickness) {
+        shapes.rect(x + thickness * 0.5f, y, width - thickness, thickness);
+        shapes.circle(x + thickness * 0.5f, y + thickness * 0.5f, thickness * 0.5f, 16);
+        shapes.circle(x + width - thickness * 0.5f, y + thickness * 0.5f, thickness * 0.5f, 16);
+    }
+
+    private void drawVerticalSegment(float x, float y, float thickness, float height) {
+        shapes.rect(x, y + thickness * 0.5f, thickness, height - thickness);
+        shapes.circle(x + thickness * 0.5f, y + thickness * 0.5f, thickness * 0.5f, 16);
+        shapes.circle(x + thickness * 0.5f, y + height - thickness * 0.5f, thickness * 0.5f, 16);
     }
 
     private Texture createBackgroundTexture() {
@@ -1110,6 +1518,12 @@ public class Main extends ApplicationAdapter {
         Texture texture = new Texture(pixmap);
         texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
         pixmap.dispose();
+        return texture;
+    }
+
+    private Texture loadGemTexture(String path) {
+        Texture texture = new Texture(Gdx.files.internal(path));
+        texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
         return texture;
     }
 
@@ -1242,6 +1656,36 @@ public class Main extends ApplicationAdapter {
         return texture;
     }
 
+    private Texture createLightningTexture(Color baseColor) {
+        int size = 128;
+        Pixmap pixmap = new Pixmap(size, size, Pixmap.Format.RGBA8888);
+        pixmap.setBlending(Pixmap.Blending.SourceOver);
+
+        Color glow = new Color(baseColor).lerp(Color.WHITE, 0.55f);
+        pixmap.setColor(0f, 0f, 0f, 0f);
+        pixmap.fill();
+        pixmap.setColor(0f, 0f, 0f, 0.30f);
+        pixmap.fillCircle(68, 72, 51);
+        pixmap.setColor(baseColor);
+        pixmap.fillCircle(64, 64, 46);
+        pixmap.setColor(1f, 1f, 1f, 0.20f);
+        pixmap.fillCircle(64, 64, 39);
+
+        pixmap.setColor(1f, 0.94f, 0.26f, 1f);
+        pixmap.fillTriangle(71, 8, 38, 70, 63, 67);
+        pixmap.fillTriangle(63, 67, 49, 120, 93, 52);
+        pixmap.setColor(glow);
+        pixmap.fillTriangle(67, 18, 47, 61, 64, 59);
+        pixmap.fillTriangle(64, 59, 56, 102, 82, 58);
+        pixmap.setColor(1f, 1f, 1f, 0.70f);
+        pixmap.drawCircle(64, 64, 50);
+
+        Texture texture = new Texture(pixmap);
+        texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+        pixmap.dispose();
+        return texture;
+    }
+
     private void drawDiamondGem(Pixmap pixmap, Color baseColor, Color dark, Color light) {
         pixmap.setColor(dark);
         pixmap.fillTriangle(64, 8, 120, 44, 64, 122);
@@ -1351,6 +1795,9 @@ public class Main extends ApplicationAdapter {
         if (isBomb(cell)) {
             return bombTextures[gemType];
         }
+        if (isLightning(cell)) {
+            return lightningTextures[gemType];
+        }
         return gemTextures[gemType];
     }
 
@@ -1368,6 +1815,9 @@ public class Main extends ApplicationAdapter {
         if (isBomb(cell)) {
             return cell - BOMB;
         }
+        if (isLightning(cell)) {
+            return cell - LIGHTNING;
+        }
         return cell;
     }
 
@@ -1380,11 +1830,15 @@ public class Main extends ApplicationAdapter {
     }
 
     private boolean isBooster(int cell) {
-        return isRocket(cell) || isBomb(cell);
+        return isRocket(cell) || isBomb(cell) || isLightning(cell);
     }
 
     private int makeBomb(int gemType) {
         return BOMB + gemType;
+    }
+
+    private int makeLightning(int gemType) {
+        return LIGHTNING + gemType;
     }
 
     private boolean isHorizontalRocket(int cell) {
@@ -1399,9 +1853,21 @@ public class Main extends ApplicationAdapter {
         return cell >= BOMB && cell < BOMB + GEM_TYPES;
     }
 
+    private boolean isLightning(int cell) {
+        return cell >= LIGHTNING && cell < LIGHTNING + GEM_TYPES;
+    }
+
+    private float topHudHeight() {
+        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.18f, 118f, 190f);
+    }
+
+    private float bottomHudHeight() {
+        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.14f, 112f, 150f);
+    }
+
     private float cellSize() {
-        float availableWidth = Gdx.graphics.getWidth() * 0.9f;
-        float availableHeight = Gdx.graphics.getHeight() - 150f;
+        float availableWidth = Gdx.graphics.getWidth() * 0.92f;
+        float availableHeight = Gdx.graphics.getHeight() - topHudHeight() - bottomHudHeight();
         return Math.max(38f, Math.min(availableWidth, availableHeight) / BOARD_SIZE);
     }
 
@@ -1410,7 +1876,40 @@ public class Main extends ApplicationAdapter {
     }
 
     private float boardY() {
-        return (Gdx.graphics.getHeight() - cellSize() * BOARD_SIZE) * 0.5f + 5f;
+        float playBottom = bottomHudHeight();
+        float playHeight = Gdx.graphics.getHeight() - topHudHeight() - bottomHudHeight();
+        return playBottom + (playHeight - cellSize() * BOARD_SIZE) * 0.48f;
+    }
+
+    private float restartButtonWidth() {
+        return restartButtonSize();
+    }
+
+    private float restartButtonHeight() {
+        return restartButtonSize();
+    }
+
+    private float restartButtonSize() {
+        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.064f, 56f, 72f);
+    }
+
+    private float restartButtonX() {
+        return (Gdx.graphics.getWidth() - restartButtonWidth()) * 0.5f;
+    }
+
+    private float restartButtonY() {
+        return Math.max(22f, bottomHudHeight() * 0.18f);
+    }
+
+    private boolean isRestartButtonHit(int screenX, int worldY) {
+        return screenX >= restartButtonX()
+            && screenX <= restartButtonX() + restartButtonWidth()
+            && worldY >= restartButtonY()
+            && worldY <= restartButtonY() + restartButtonHeight();
+    }
+
+    private float hudScale(float multiplier) {
+        return multiplier * MathUtils.clamp(Gdx.graphics.getWidth() / 720f, 0.72f, 1.05f);
     }
 
     private int screenToCol(int screenX) {
@@ -1446,6 +1945,7 @@ public class Main extends ApplicationAdapter {
         shapes.dispose();
         font.dispose();
         background.dispose();
+        restartIcon.dispose();
         for (Texture texture : gemTextures) {
             texture.dispose();
         }
@@ -1456,6 +1956,9 @@ public class Main extends ApplicationAdapter {
             texture.dispose();
         }
         for (Texture texture : bombTextures) {
+            texture.dispose();
+        }
+        for (Texture texture : lightningTextures) {
             texture.dispose();
         }
     }
