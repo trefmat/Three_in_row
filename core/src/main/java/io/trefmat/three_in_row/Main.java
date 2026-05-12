@@ -734,8 +734,18 @@ public class Main extends ApplicationAdapter {
         int[][] boosters = new int[BOARD_SIZE][BOARD_SIZE];
         clearBlastEffects();
 
-        markBoosterBlast(cellsToClear, swapRowA, swapColA);
-        markBoosterBlast(cellsToClear, swapRowB, swapColB);
+        if (isBombRocketSwap()) {
+            int rocketRow = isRocket(board[swapRowA][swapColA]) ? swapRowA : swapRowB;
+            int rocketCol = isRocket(board[swapRowA][swapColA]) ? swapColA : swapColB;
+            int bombRow = isBomb(board[swapRowA][swapColA]) ? swapRowA : swapRowB;
+            int bombCol = isBomb(board[swapRowA][swapColA]) ? swapColA : swapColB;
+            markCrossBlast(cellsToClear, rocketRow, rocketCol);
+            blastBombs[bombRow][bombCol] = true;
+            markBombBlast(cellsToClear, bombRow, bombCol);
+        } else {
+            markBoosterBlast(cellsToClear, swapRowA, swapColA);
+            markBoosterBlast(cellsToClear, swapRowB, swapColB);
+        }
 
         copyBooleanGrid(cellsToClear, pendingCellsToClear);
         copyBooleanGrid(matches, pendingMatches);
@@ -747,17 +757,29 @@ public class Main extends ApplicationAdapter {
         beginAnimation(AnimationState.BOOSTER_BLAST, BOOSTER_BLAST_TIME);
     }
 
+    private boolean isBombRocketSwap() {
+        return (isBomb(board[swapRowA][swapColA]) && isRocket(board[swapRowB][swapColB]))
+            || (isRocket(board[swapRowA][swapColA]) && isBomb(board[swapRowB][swapColB]));
+    }
+
     private void beginLightningBlast() {
         boolean[][] cellsToClear = new boolean[BOARD_SIZE][BOARD_SIZE];
         boolean[][] matches = new boolean[BOARD_SIZE][BOARD_SIZE];
         int[][] boosters = new int[BOARD_SIZE][BOARD_SIZE];
         clearBlastEffects();
 
-        for (int row = 0; row < BOARD_SIZE; row++) {
-            for (int col = 0; col < BOARD_SIZE; col++) {
-                if (lightningClearsBoard || baseGemType(board[row][col]) == lightningTargetType) {
-                    cellsToClear[row][col] = true;
-                }
+        if (lightningClearsBoard) {
+            markWholeBoard(cellsToClear);
+        } else {
+            int otherRow = isLightning(board[swapRowA][swapColA]) ? swapRowB : swapRowA;
+            int otherCol = isLightning(board[swapRowA][swapColA]) ? swapColB : swapColA;
+            int otherCell = board[otherRow][otherCol];
+            if (isRocket(otherCell)) {
+                markLightningRocketCombo(cellsToClear, lightningTargetType, isHorizontalRocket(otherCell));
+            } else if (isBomb(otherCell)) {
+                markLightningBombCombo(cellsToClear, lightningTargetType);
+            } else {
+                markGemType(cellsToClear, lightningTargetType);
             }
         }
         cellsToClear[swapRowA][swapColA] = true;
@@ -773,6 +795,34 @@ public class Main extends ApplicationAdapter {
         clearBoosterPlacementHints();
         statusText = "Lightning strike";
         beginAnimation(AnimationState.BOOSTER_BLAST, BOOSTER_BLAST_TIME);
+    }
+
+    private void markLightningRocketCombo(boolean[][] cellsToClear, int gemType, boolean horizontal) {
+        for (int row = 0; row < BOARD_SIZE; row++) {
+            for (int col = 0; col < BOARD_SIZE; col++) {
+                if (baseGemType(board[row][col]) == gemType) {
+                    board[row][col] = makeRocket(gemType, horizontal);
+                    if (horizontal) {
+                        blastHorizontalRockets[row][col] = true;
+                    } else {
+                        blastVerticalRockets[row][col] = true;
+                    }
+                    markRocketBlast(cellsToClear, row, col);
+                }
+            }
+        }
+    }
+
+    private void markLightningBombCombo(boolean[][] cellsToClear, int gemType) {
+        for (int row = 0; row < BOARD_SIZE; row++) {
+            for (int col = 0; col < BOARD_SIZE; col++) {
+                if (baseGemType(board[row][col]) == gemType) {
+                    board[row][col] = makeBomb(gemType);
+                    blastBombs[row][col] = true;
+                    markBombBlast(cellsToClear, row, col);
+                }
+            }
+        }
     }
 
     private void markBoosterBlast(boolean[][] cellsToClear, int row, int col) {
@@ -898,6 +948,35 @@ public class Main extends ApplicationAdapter {
         } else {
             for (int clearRow = 0; clearRow < BOARD_SIZE; clearRow++) {
                 cellsToClear[clearRow][col] = true;
+            }
+        }
+    }
+
+    private void markCrossBlast(boolean[][] cellsToClear, int row, int col) {
+        blastHorizontalRockets[row][col] = true;
+        blastVerticalRockets[row][col] = true;
+        for (int clearCol = 0; clearCol < BOARD_SIZE; clearCol++) {
+            cellsToClear[row][clearCol] = true;
+        }
+        for (int clearRow = 0; clearRow < BOARD_SIZE; clearRow++) {
+            cellsToClear[clearRow][col] = true;
+        }
+    }
+
+    private void markWholeBoard(boolean[][] cellsToClear) {
+        for (int row = 0; row < BOARD_SIZE; row++) {
+            for (int col = 0; col < BOARD_SIZE; col++) {
+                cellsToClear[row][col] = true;
+            }
+        }
+    }
+
+    private void markGemType(boolean[][] cellsToClear, int gemType) {
+        for (int row = 0; row < BOARD_SIZE; row++) {
+            for (int col = 0; col < BOARD_SIZE; col++) {
+                if (baseGemType(board[row][col]) == gemType) {
+                    cellsToClear[row][col] = true;
+                }
             }
         }
     }
@@ -1429,12 +1508,12 @@ public class Main extends ApplicationAdapter {
     }
 
     private void drawScoreNumberShapes(String text) {
-        float digitHeight = MathUtils.clamp(topHudHeight() * 0.36f, 42f, 68f);
+        float digitHeight = MathUtils.clamp(topHudHeight() * 0.30f, 42f, 68f);
         float digitWidth = digitHeight * 0.56f;
         float gap = digitHeight * 0.18f;
         float totalWidth = text.length() * digitWidth + Math.max(0, text.length() - 1) * gap;
         float startX = (Gdx.graphics.getWidth() - totalWidth) * 0.5f;
-        float y = Gdx.graphics.getHeight() - topHudHeight() * 0.64f;
+        float y = Gdx.graphics.getHeight() - topHudHeight() * 0.76f;
 
         shapes.setColor(0f, 0f, 0f, 0.24f);
         for (int i = 0; i < text.length(); i++) {
@@ -1858,7 +1937,7 @@ public class Main extends ApplicationAdapter {
     }
 
     private float topHudHeight() {
-        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.18f, 118f, 190f);
+        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.22f, 152f, 230f);
     }
 
     private float bottomHudHeight() {
@@ -1890,7 +1969,7 @@ public class Main extends ApplicationAdapter {
     }
 
     private float restartButtonSize() {
-        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.064f, 56f, 72f);
+        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.082f, 72f, 94f);
     }
 
     private float restartButtonX() {
