@@ -31,6 +31,7 @@ public class Main extends ApplicationAdapter {
     private static final float MATCH_CLEAR_TIME = 0.22f;
     private static final float BOOSTER_BLAST_TIME = 0.36f;
     private static final float RESTART_ANIMATION_TIME = 1.05f;
+    private static final float MENU_BUTTON_GAP = 18f;
 
     private final int[][] board = new int[BOARD_SIZE][BOARD_SIZE];
     private final float[][] drawRows = new float[BOARD_SIZE][BOARD_SIZE];
@@ -62,7 +63,9 @@ public class Main extends ApplicationAdapter {
     private int score;
     private int moves;
     private float invalidFlash;
+    private float menuTime;
     private String statusText = "Pick a crystal";
+    private GameScreen gameScreen = GameScreen.MENU;
     private AnimationState animationState = AnimationState.IDLE;
     private float animationTimer;
     private float animationDuration;
@@ -86,6 +89,11 @@ public class Main extends ApplicationAdapter {
     private boolean restartAnimating;
     private boolean restartBoardRebuilt;
     private float restartAnimationTimer;
+
+    private enum GameScreen {
+        MENU,
+        PLAYING
+    }
 
     private enum AnimationState {
         IDLE,
@@ -165,6 +173,22 @@ public class Main extends ApplicationAdapter {
 
             @Override
             public boolean keyDown(int keycode) {
+                if (gameScreen == GameScreen.MENU) {
+                    if (keycode == Input.Keys.ENTER || keycode == Input.Keys.SPACE) {
+                        startGame();
+                        return true;
+                    }
+                    if (keycode == Input.Keys.ESCAPE || keycode == Input.Keys.BACK) {
+                        Gdx.app.exit();
+                        return true;
+                    }
+                    return false;
+                }
+
+                if (keycode == Input.Keys.ESCAPE || keycode == Input.Keys.BACK) {
+                    openMainMenu();
+                    return true;
+                }
                 if (keycode == Input.Keys.R) {
                     beginRestartAnimation();
                     return true;
@@ -177,6 +201,16 @@ public class Main extends ApplicationAdapter {
     @Override
     public void render() {
         float delta = Gdx.graphics.getDeltaTime();
+        menuTime += delta;
+
+        if (gameScreen == GameScreen.MENU) {
+            Gdx.gl.glClearColor(0.045f, 0.05f, 0.075f, 1f);
+            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+            drawBackground();
+            drawMainMenu();
+            return;
+        }
+
         invalidFlash = Math.max(0f, invalidFlash - delta);
         updateRestartAnimation(delta);
         updateAnimation(delta);
@@ -202,6 +236,10 @@ public class Main extends ApplicationAdapter {
         int worldY = Gdx.graphics.getHeight() - screenY;
         if (isRestartButtonHit(screenX, worldY)) {
             beginRestartAnimation();
+            return;
+        }
+        if (isMenuButtonHit(screenX, worldY)) {
+            openMainMenu();
             return;
         }
 
@@ -249,6 +287,13 @@ public class Main extends ApplicationAdapter {
     }
 
     private void finishTouch(int screenX, int screenY) {
+        if (gameScreen == GameScreen.MENU) {
+            handleMenuTap(screenX, Gdx.graphics.getHeight() - screenY);
+            activeTouchPointer = -1;
+            swipeHandled = false;
+            return;
+        }
+
         if (!swipeHandled) {
             handleBoardTap(screenX, screenY);
         }
@@ -259,6 +304,10 @@ public class Main extends ApplicationAdapter {
     }
 
     private void handleSwipeDrag(int screenX, int screenY) {
+        if (gameScreen == GameScreen.MENU) {
+            return;
+        }
+
         if (swipeHandled || animationState != AnimationState.IDLE || !isInside(touchStartRow, touchStartCol)) {
             return;
         }
@@ -1165,6 +1214,27 @@ public class Main extends ApplicationAdapter {
         syncDrawPositions();
     }
 
+    private void startGame() {
+        resetBoard();
+        gameScreen = GameScreen.PLAYING;
+        activeTouchPointer = -1;
+        swipeHandled = false;
+    }
+
+    private void openMainMenu() {
+        gameScreen = GameScreen.MENU;
+        selectedRow = -1;
+        selectedCol = -1;
+        activeTouchPointer = -1;
+        touchStartRow = -1;
+        touchStartCol = -1;
+        swipeHandled = false;
+        restartAnimating = false;
+        restartBoardRebuilt = false;
+        restartAnimationTimer = 0f;
+        animationState = AnimationState.IDLE;
+    }
+
     private void refillBoardKeepingProgress() {
         do {
             fillFreshBoard();
@@ -1224,6 +1294,80 @@ public class Main extends ApplicationAdapter {
         shapes.circle(Gdx.graphics.getWidth() * 0.82f, Gdx.graphics.getHeight() * 0.22f, Gdx.graphics.getWidth() * 0.22f, 64);
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private void drawMainMenu() {
+        float width = Gdx.graphics.getWidth();
+        float height = Gdx.graphics.getHeight();
+        float centerX = width * 0.5f;
+
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+
+        shapes.setColor(0f, 0f, 0f, 0.22f);
+        shapes.rect(0f, 0f, width, height);
+
+        float panelWidth = MathUtils.clamp(width * 0.78f, 360f, 540f);
+        float panelHeight = MathUtils.clamp(height * 0.48f, 390f, 470f);
+        float panelX = centerX - panelWidth * 0.5f;
+        float panelY = height * 0.5f - panelHeight * 0.5f;
+        float radius = Math.max(18f, panelWidth * 0.04f);
+
+        shapes.setColor(0f, 0f, 0f, 0.28f);
+        fillRoundedRect(panelX + 7f, panelY - 8f, panelWidth, panelHeight, radius);
+        shapes.setColor(0.045f, 0.055f, 0.085f, 0.96f);
+        fillRoundedRect(panelX, panelY, panelWidth, panelHeight, radius);
+        shapes.setColor(0.15f, 0.28f, 0.40f, 0.30f);
+        fillRoundedRect(panelX + 12f, panelY + 12f, panelWidth - 24f, panelHeight - 24f, radius * 0.70f);
+
+        drawMenuButtonShape(playButtonX(), playButtonY(), menuButtonWidth(), menuActionButtonHeight(), 0.16f, 0.54f, 0.85f);
+        drawMenuButtonShape(exitButtonX(), exitButtonY(), menuButtonWidth(), menuActionButtonHeight(), 0.13f, 0.16f, 0.23f);
+
+        shapes.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        drawMenuGemStrip(centerX, panelY + panelHeight * 0.73f);
+        drawCenteredText("THREE IN ROW", centerX, panelY + panelHeight * 0.82f, MathUtils.clamp(width / 620f, 0.92f, 1.38f), Color.WHITE);
+        drawCenteredText("Match crystals. Build boosters. Chase a clean board.", centerX, panelY + panelHeight * 0.64f, hudScale(0.95f), Color.valueOf("BFD7E8"));
+        drawCenteredText("PLAY", centerX, playButtonY() + menuActionButtonHeight() * 0.62f, hudScale(1.30f), Color.WHITE);
+        drawCenteredText("EXIT", centerX, exitButtonY() + menuActionButtonHeight() * 0.62f, hudScale(1.04f), Color.valueOf("D9E5EF"));
+        drawCenteredText("Enter - play    Esc - exit", centerX, panelY + panelHeight * 0.11f, hudScale(0.82f), Color.valueOf("91A7B8"));
+    }
+
+    private void drawMenuGemStrip(float centerX, float centerY) {
+        float size = MathUtils.clamp(Gdx.graphics.getWidth() * 0.075f, 42f, 58f);
+        float gap = size * 0.72f;
+
+        batch.begin();
+        batch.setColor(1f, 1f, 1f, 0.94f);
+        for (int i = 0; i < GEM_TYPES; i++) {
+            float phase = menuTime * 1.7f + i * 0.85f;
+            float y = centerY + MathUtils.sin(phase) * size * 0.13f;
+            float x = centerX + (i - (GEM_TYPES - 1) * 0.5f) * gap - size * 0.5f;
+            batch.draw(gemTextures[i], x, y - size * 0.5f, size, size);
+        }
+        batch.setColor(Color.WHITE);
+        batch.end();
+    }
+
+    private void drawMenuButtonShape(float x, float y, float width, float height, float red, float green, float blue) {
+        float radius = height * 0.18f;
+        shapes.setColor(0f, 0f, 0f, 0.30f);
+        fillRoundedRect(x + 4f, y - 5f, width, height, radius);
+        shapes.setColor(red, green, blue, 0.95f);
+        fillRoundedRect(x, y, width, height, radius);
+        shapes.setColor(1f, 1f, 1f, 0.10f);
+        fillRoundedRect(x + 5f, y + height * 0.52f, width - 10f, height * 0.38f, radius * 0.62f);
+    }
+
+    private void handleMenuTap(int screenX, int worldY) {
+        if (isPlayButtonHit(screenX, worldY)) {
+            startGame();
+            return;
+        }
+        if (isExitButtonHit(screenX, worldY)) {
+            Gdx.app.exit();
+        }
     }
 
     private void drawBoardBackground() {
@@ -1427,11 +1571,13 @@ public class Main extends ApplicationAdapter {
         shapes.begin(ShapeRenderer.ShapeType.Filled);
         drawTopScorePanel();
         drawRestartButtonShape();
+        drawHudMenuButtonShape();
         drawScoreNumberShapes(scoreText);
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
         drawRestartButtonIcon();
+        drawHudMenuButtonText();
     }
 
     private void drawTopScorePanel() {
@@ -1491,6 +1637,31 @@ public class Main extends ApplicationAdapter {
         batch.end();
     }
 
+    private void drawHudMenuButtonShape() {
+        float x = hudMenuButtonX();
+        float y = hudMenuButtonY();
+        float width = hudMenuButtonWidth();
+        float height = hudMenuButtonHeight();
+        float radius = height * 0.16f;
+
+        shapes.setColor(0f, 0f, 0f, 0.26f);
+        fillRoundedRect(x + 4f, y - 5f, width, height, radius);
+        shapes.setColor(0.045f, 0.055f, 0.075f, 0.98f);
+        fillRoundedRect(x, y, width, height, radius);
+        shapes.setColor(0.35f, 0.62f, 1f, 0.16f);
+        fillRoundedRect(x + 5f, y + height * 0.56f, width - 10f, height * 0.30f, radius * 0.55f);
+    }
+
+    private void drawHudMenuButtonText() {
+        drawCenteredText(
+            "MENU",
+            hudMenuButtonX() + hudMenuButtonWidth() * 0.5f,
+            hudMenuButtonY() + hudMenuButtonHeight() * 0.58f,
+            hudScale(0.86f),
+            Color.WHITE
+        );
+    }
+
     private float restartAnimationProgress() {
         if (!restartAnimating) {
             return 0f;
@@ -1505,6 +1676,17 @@ public class Main extends ApplicationAdapter {
         shapes.circle(x + width - radius, y + radius, radius, 32);
         shapes.circle(x + radius, y + height - radius, radius, 32);
         shapes.circle(x + width - radius, y + height - radius, radius, 32);
+    }
+
+    private void drawCenteredText(String text, float centerX, float baselineY, float scale, Color color) {
+        font.getData().setScale(scale);
+        glyphLayout.setText(font, text);
+        batch.begin();
+        font.setColor(color);
+        font.draw(batch, text, centerX - glyphLayout.width * 0.5f, baselineY);
+        batch.end();
+        font.setColor(Color.WHITE);
+        font.getData().setScale(1f);
     }
 
     private void drawScoreNumberShapes(String text) {
@@ -1985,6 +2167,67 @@ public class Main extends ApplicationAdapter {
             && screenX <= restartButtonX() + restartButtonWidth()
             && worldY >= restartButtonY()
             && worldY <= restartButtonY() + restartButtonHeight();
+    }
+
+    private float hudMenuButtonWidth() {
+        return MathUtils.clamp(Gdx.graphics.getWidth() * 0.18f, 104f, 138f);
+    }
+
+    private float hudMenuButtonHeight() {
+        return restartButtonHeight();
+    }
+
+    private float hudMenuButtonX() {
+        return Math.max(18f, restartButtonX() - hudMenuButtonWidth() - MENU_BUTTON_GAP);
+    }
+
+    private float hudMenuButtonY() {
+        return restartButtonY();
+    }
+
+    private boolean isMenuButtonHit(int screenX, int worldY) {
+        return screenX >= hudMenuButtonX()
+            && screenX <= hudMenuButtonX() + hudMenuButtonWidth()
+            && worldY >= hudMenuButtonY()
+            && worldY <= hudMenuButtonY() + hudMenuButtonHeight();
+    }
+
+    private float menuButtonWidth() {
+        return MathUtils.clamp(Gdx.graphics.getWidth() * 0.46f, 240f, 330f);
+    }
+
+    private float menuActionButtonHeight() {
+        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.074f, 58f, 76f);
+    }
+
+    private float playButtonX() {
+        return (Gdx.graphics.getWidth() - menuButtonWidth()) * 0.5f;
+    }
+
+    private float playButtonY() {
+        return Gdx.graphics.getHeight() * 0.37f;
+    }
+
+    private float exitButtonX() {
+        return playButtonX();
+    }
+
+    private float exitButtonY() {
+        return playButtonY() - menuActionButtonHeight() - MathUtils.clamp(Gdx.graphics.getHeight() * 0.025f, 18f, 28f);
+    }
+
+    private boolean isPlayButtonHit(int screenX, int worldY) {
+        return screenX >= playButtonX()
+            && screenX <= playButtonX() + menuButtonWidth()
+            && worldY >= playButtonY()
+            && worldY <= playButtonY() + menuActionButtonHeight();
+    }
+
+    private boolean isExitButtonHit(int screenX, int worldY) {
+        return screenX >= exitButtonX()
+            && screenX <= exitButtonX() + menuButtonWidth()
+            && worldY >= exitButtonY()
+            && worldY <= exitButtonY() + menuActionButtonHeight();
     }
 
     private float hudScale(float multiplier) {
