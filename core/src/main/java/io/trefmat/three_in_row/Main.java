@@ -4,6 +4,7 @@ import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
+import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Pixmap;
@@ -24,6 +25,7 @@ public class Main extends ApplicationAdapter {
     private static final int ROCKET_VERTICAL = 200;
     private static final int BOMB = 300;
     private static final int LIGHTNING = 400;
+    private static final String[] GEM_COLOR_NAMES = {"blue", "green", "red", "yellow", "purple", "orange"};
     private static final float INVALID_FLASH_TIME = 0.25f;
     private static final float SWAP_TIME = 0.18f;
     private static final float FALL_TIME = 0.28f;
@@ -32,6 +34,7 @@ public class Main extends ApplicationAdapter {
     private static final float BOOSTER_BLAST_TIME = 0.36f;
     private static final float RESTART_ANIMATION_TIME = 1.05f;
     private static final float MENU_BUTTON_GAP = 18f;
+    private static final float ROCKET_DRAW_SCALE = 1.25f;
 
     private final int[][] board = new int[BOARD_SIZE][BOARD_SIZE];
     private final float[][] drawRows = new float[BOARD_SIZE][BOARD_SIZE];
@@ -136,10 +139,10 @@ public class Main extends ApplicationAdapter {
         };
         for (int i = 0; i < GEM_TYPES; i++) {
             gemTextures[i] = loadGemTexture(gemFiles[i]);
-            rocketHorizontalTextures[i] = createRocketTexture(colors[i], true);
-            rocketVerticalTextures[i] = createRocketTexture(colors[i], false);
-            bombTextures[i] = createBombTexture(colors[i]);
-            lightningTextures[i] = createLightningTexture(colors[i]);
+            rocketVerticalTextures[i] = loadRocketTexture(GEM_COLOR_NAMES[i], colors[i], false);
+            rocketHorizontalTextures[i] = rocketVerticalTextures[i];
+            bombTextures[i] = loadBombTexture(GEM_COLOR_NAMES[i], colors[i]);
+            lightningTextures[i] = loadLightningTexture(GEM_COLOR_NAMES[i], colors[i]);
         }
 
         resetBoard();
@@ -1300,18 +1303,17 @@ public class Main extends ApplicationAdapter {
         float width = Gdx.graphics.getWidth();
         float height = Gdx.graphics.getHeight();
         float centerX = width * 0.5f;
+        float panelWidth = menuPanelWidth();
+        float panelHeight = menuPanelHeight();
+        float panelX = menuPanelX();
+        float panelY = menuPanelY();
+        float radius = Math.max(18f, panelWidth * 0.04f);
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         shapes.begin(ShapeRenderer.ShapeType.Filled);
 
         shapes.setColor(0f, 0f, 0f, 0.22f);
         shapes.rect(0f, 0f, width, height);
-
-        float panelWidth = MathUtils.clamp(width * 0.78f, 360f, 540f);
-        float panelHeight = MathUtils.clamp(height * 0.48f, 390f, 470f);
-        float panelX = centerX - panelWidth * 0.5f;
-        float panelY = height * 0.5f - panelHeight * 0.5f;
-        float radius = Math.max(18f, panelWidth * 0.04f);
 
         shapes.setColor(0f, 0f, 0f, 0.28f);
         fillRoundedRect(panelX + 7f, panelY - 8f, panelWidth, panelHeight, radius);
@@ -1320,18 +1322,17 @@ public class Main extends ApplicationAdapter {
         shapes.setColor(0.15f, 0.28f, 0.40f, 0.30f);
         fillRoundedRect(panelX + 12f, panelY + 12f, panelWidth - 24f, panelHeight - 24f, radius * 0.70f);
 
-        drawMenuButtonShape(playButtonX(), playButtonY(), menuButtonWidth(), menuActionButtonHeight(), 0.16f, 0.54f, 0.85f);
-        drawMenuButtonShape(exitButtonX(), exitButtonY(), menuButtonWidth(), menuActionButtonHeight(), 0.13f, 0.16f, 0.23f);
+        drawMenuButtonShape(playButtonX(), playButtonY(), menuButtonWidth(), menuActionButtonHeight(), 0.12f, 0.58f, 0.90f, isPlayButtonHovering());
+        drawMenuButtonShape(exitButtonX(), exitButtonY(), menuButtonWidth(), menuActionButtonHeight(), 0.18f, 0.22f, 0.32f, isExitButtonHovering());
 
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
-        drawMenuGemStrip(centerX, panelY + panelHeight * 0.73f);
-        drawCenteredText("THREE IN ROW", centerX, panelY + panelHeight * 0.82f, MathUtils.clamp(width / 620f, 0.92f, 1.38f), Color.WHITE);
-        drawCenteredText("Match crystals. Build boosters. Chase a clean board.", centerX, panelY + panelHeight * 0.64f, hudScale(0.95f), Color.valueOf("BFD7E8"));
-        drawCenteredText("PLAY", centerX, playButtonY() + menuActionButtonHeight() * 0.62f, hudScale(1.30f), Color.WHITE);
-        drawCenteredText("EXIT", centerX, exitButtonY() + menuActionButtonHeight() * 0.62f, hudScale(1.04f), Color.valueOf("D9E5EF"));
-        drawCenteredText("Enter - play    Esc - exit", centerX, panelY + panelHeight * 0.11f, hudScale(0.82f), Color.valueOf("91A7B8"));
+        drawMenuGemStrip(centerX, panelY + panelHeight * 0.65f);
+        drawCenteredText("THREE IN ROW", centerX, panelY + panelHeight * 0.83f, MathUtils.clamp(width / 660f, 0.88f, 1.28f), Color.WHITE);
+        drawCenteredText("Match crystals. Build boosters.", centerX, panelY + panelHeight * 0.52f, hudScale(0.86f), Color.valueOf("BFD7E8"));
+        drawButtonText("PLAY", centerX, playButtonY() + menuActionButtonHeight() * 0.62f, hudScale(1.18f), Color.WHITE);
+        drawButtonText("EXIT", centerX, exitButtonY() + menuActionButtonHeight() * 0.62f, hudScale(0.96f), Color.valueOf("D9E5EF"));
     }
 
     private void drawMenuGemStrip(float centerX, float centerY) {
@@ -1350,14 +1351,8 @@ public class Main extends ApplicationAdapter {
         batch.end();
     }
 
-    private void drawMenuButtonShape(float x, float y, float width, float height, float red, float green, float blue) {
-        float radius = height * 0.18f;
-        shapes.setColor(0f, 0f, 0f, 0.30f);
-        fillRoundedRect(x + 4f, y - 5f, width, height, radius);
-        shapes.setColor(red, green, blue, 0.95f);
-        fillRoundedRect(x, y, width, height, radius);
-        shapes.setColor(1f, 1f, 1f, 0.10f);
-        fillRoundedRect(x + 5f, y + height * 0.52f, width - 10f, height * 0.38f, radius * 0.62f);
+    private void drawMenuButtonShape(float x, float y, float width, float height, float red, float green, float blue, boolean active) {
+        drawSoftButton(x, y, width, height, red, green, blue, 0.36f, active);
     }
 
     private void handleMenuTap(int screenX, int worldY) {
@@ -1458,17 +1453,44 @@ public class Main extends ApplicationAdapter {
                 } else {
                     batch.setColor(Color.WHITE);
                 }
-                batch.draw(
-                    textureForCell(gem),
-                    boardX() + drawCols[row][col] * cell + localPadding,
-                    boardY() + drawRows[row][col] * cell + localPadding,
-                    size,
-                    size
-                );
+                drawCellTexture(gem, boardX() + drawCols[row][col] * cell + localPadding, boardY() + drawRows[row][col] * cell + localPadding, size);
             }
         }
         batch.setColor(Color.WHITE);
         batch.end();
+    }
+
+    private void drawCellTexture(int gem, float x, float y, float size) {
+        Texture texture = textureForCell(gem);
+        if (isRocket(gem)) {
+            float rocketSize = size * ROCKET_DRAW_SCALE;
+            float rocketOffset = (rocketSize - size) * 0.5f;
+            x -= rocketOffset;
+            y -= rocketOffset;
+            size = rocketSize;
+        }
+        if (isHorizontalRocket(gem)) {
+            batch.draw(
+                texture,
+                x,
+                y,
+                size * 0.5f,
+                size * 0.5f,
+                size,
+                size,
+                1f,
+                1f,
+                -90f,
+                0,
+                0,
+                texture.getWidth(),
+                texture.getHeight(),
+                false,
+                false
+            );
+            return;
+        }
+        batch.draw(texture, x, y, size, size);
     }
 
     private float restartCellWave(int row, int col) {
@@ -1578,29 +1600,19 @@ public class Main extends ApplicationAdapter {
 
         drawRestartButtonIcon();
         drawHudMenuButtonText();
+        drawScoreLabel(scoreText);
     }
 
     private void drawTopScorePanel() {
         float height = topHudHeight();
         shapes.setColor(0.03f, 0.04f, 0.065f, 0.72f);
         shapes.rect(0f, Gdx.graphics.getHeight() - height, Gdx.graphics.getWidth(), height);
-        shapes.setColor(0.12f, 0.18f, 0.28f, 0.36f);
-        shapes.rect(Gdx.graphics.getWidth() * 0.18f, Gdx.graphics.getHeight() - height + height * 0.12f, Gdx.graphics.getWidth() * 0.64f, height * 0.76f);
-        shapes.setColor(0.35f, 0.62f, 1f, 0.20f);
-        shapes.rect(Gdx.graphics.getWidth() * 0.25f, Gdx.graphics.getHeight() - height + 3f, Gdx.graphics.getWidth() * 0.5f, 3f);
+        shapes.setColor(0.10f, 0.16f, 0.24f, 0.30f);
+        fillRoundedRect(Gdx.graphics.getWidth() * 0.18f, Gdx.graphics.getHeight() - height + height * 0.12f, Gdx.graphics.getWidth() * 0.64f, height * 0.76f, height * 0.12f);
     }
 
     private void drawRestartButtonShape() {
-        float x = restartButtonX();
-        float y = restartButtonY();
-        float width = restartButtonWidth();
-        float height = restartButtonHeight();
-        float radius = height * 0.16f;
-
-        shapes.setColor(0f, 0f, 0f, 0.26f);
-        fillRoundedRect(x + 4f, y - 5f, width, height, radius);
-        shapes.setColor(0.045f, 0.055f, 0.075f, 0.98f);
-        fillRoundedRect(x, y, width, height, radius);
+        drawSoftButton(restartButtonX(), restartButtonY(), restartButtonWidth(), restartButtonHeight(), 0.11f, 0.22f, 0.34f, 0.28f, isRestartButtonHovering());
     }
 
     private void drawRestartButtonIcon() {
@@ -1638,22 +1650,11 @@ public class Main extends ApplicationAdapter {
     }
 
     private void drawHudMenuButtonShape() {
-        float x = hudMenuButtonX();
-        float y = hudMenuButtonY();
-        float width = hudMenuButtonWidth();
-        float height = hudMenuButtonHeight();
-        float radius = height * 0.16f;
-
-        shapes.setColor(0f, 0f, 0f, 0.26f);
-        fillRoundedRect(x + 4f, y - 5f, width, height, radius);
-        shapes.setColor(0.045f, 0.055f, 0.075f, 0.98f);
-        fillRoundedRect(x, y, width, height, radius);
-        shapes.setColor(0.35f, 0.62f, 1f, 0.16f);
-        fillRoundedRect(x + 5f, y + height * 0.56f, width - 10f, height * 0.30f, radius * 0.55f);
+        drawSoftButton(hudMenuButtonX(), hudMenuButtonY(), hudMenuButtonWidth(), hudMenuButtonHeight(), 0.11f, 0.22f, 0.34f, 0.28f, isHudMenuButtonHovering());
     }
 
     private void drawHudMenuButtonText() {
-        drawCenteredText(
+        drawButtonText(
             "MENU",
             hudMenuButtonX() + hudMenuButtonWidth() * 0.5f,
             hudMenuButtonY() + hudMenuButtonHeight() * 0.58f,
@@ -1678,6 +1679,41 @@ public class Main extends ApplicationAdapter {
         shapes.circle(x + width - radius, y + height - radius, radius, 32);
     }
 
+    private void drawSoftButton(float x, float y, float width, float height, float red, float green, float blue, float glowAlpha, boolean active) {
+        float lift = active ? height * 0.035f : 0f;
+        float radius = height * 0.30f;
+        float glowPad = Math.max(4f, height * (active ? 0.11f : 0.08f));
+        float innerPad = Math.max(4f, height * 0.07f);
+        float activeBoost = active ? 0.10f : 0f;
+        y += lift;
+
+        shapes.setColor(0f, 0f, 0f, active ? 0.22f : 0.30f);
+        fillRoundedRect(x + height * 0.09f, y - height * 0.12f, width, height, radius);
+        shapes.setColor(
+            Math.min(1f, red + activeBoost),
+            Math.min(1f, green + activeBoost),
+            Math.min(1f, blue + activeBoost),
+            active ? glowAlpha + 0.16f : glowAlpha
+        );
+        fillRoundedRect(x - glowPad, y - glowPad, width + glowPad * 2f, height + glowPad * 2f, radius + glowPad);
+        shapes.setColor(red * 0.32f, green * 0.35f, blue * 0.40f, 0.92f);
+        fillRoundedRect(x - 1f, y - 1f, width + 2f, height + 2f, radius + 1f);
+        shapes.setColor(
+            Math.min(1f, red * 0.52f + activeBoost),
+            Math.min(1f, green * 0.56f + activeBoost),
+            Math.min(1f, blue * 0.62f + activeBoost),
+            0.98f
+        );
+        fillRoundedRect(x, y, width, height, radius);
+        shapes.setColor(
+            Math.min(1f, red + 0.10f + activeBoost),
+            Math.min(1f, green + 0.10f + activeBoost),
+            Math.min(1f, blue + 0.10f + activeBoost),
+            0.96f
+        );
+        fillRoundedRect(x + innerPad, y + innerPad, width - innerPad * 2f, height - innerPad * 2f, Math.max(1f, radius - innerPad));
+    }
+
     private void drawCenteredText(String text, float centerX, float baselineY, float scale, Color color) {
         font.getData().setScale(scale);
         glyphLayout.setText(font, text);
@@ -1689,24 +1725,62 @@ public class Main extends ApplicationAdapter {
         font.getData().setScale(1f);
     }
 
+    private void drawButtonText(String text, float centerX, float baselineY, float scale, Color color) {
+        drawCenteredText(text, centerX + 2f, baselineY - 2f, scale, Color.valueOf("102034"));
+        drawCenteredText(text, centerX, baselineY, scale, color);
+    }
+
     private void drawScoreNumberShapes(String text) {
-        float digitHeight = MathUtils.clamp(topHudHeight() * 0.30f, 42f, 68f);
-        float digitWidth = digitHeight * 0.56f;
-        float gap = digitHeight * 0.18f;
+        float digitHeight = MathUtils.clamp(topHudHeight() * 0.36f, 50f, 78f);
+        float digitWidth = digitHeight * 0.58f;
+        float gap = digitHeight * 0.16f;
         float totalWidth = text.length() * digitWidth + Math.max(0, text.length() - 1) * gap;
         float startX = (Gdx.graphics.getWidth() - totalWidth) * 0.5f;
-        float y = Gdx.graphics.getHeight() - topHudHeight() * 0.76f;
+        float y = Gdx.graphics.getHeight() - topHudHeight() * 0.74f;
+        float badgePadX = digitHeight * 0.42f;
+        float badgePadTop = digitHeight * 0.46f;
+        float badgePadBottom = digitHeight * 0.24f;
+        float badgeX = startX - badgePadX;
+        float badgeY = y - badgePadBottom;
+        float badgeWidth = totalWidth + badgePadX * 2f;
+        float badgeHeight = digitHeight + badgePadTop + badgePadBottom;
+        float badgeRadius = Math.min(badgeHeight * 0.28f, 28f);
 
-        shapes.setColor(0f, 0f, 0f, 0.24f);
+        shapes.setColor(0f, 0f, 0f, 0.30f);
+        fillRoundedRect(badgeX + 5f, badgeY - 6f, badgeWidth, badgeHeight, badgeRadius);
+        shapes.setColor(0.10f, 0.45f, 0.82f, 0.26f);
+        fillRoundedRect(badgeX - 5f, badgeY - 5f, badgeWidth + 10f, badgeHeight + 10f, badgeRadius + 5f);
+        shapes.setColor(0.035f, 0.055f, 0.09f, 0.95f);
+        fillRoundedRect(badgeX, badgeY, badgeWidth, badgeHeight, badgeRadius);
+        shapes.setColor(0.10f, 0.22f, 0.34f, 0.92f);
+        fillRoundedRect(badgeX + 5f, badgeY + 5f, badgeWidth - 10f, badgeHeight - 10f, Math.max(1f, badgeRadius - 5f));
+
+        shapes.setColor(0.04f, 0.08f, 0.13f, 0.64f);
         for (int i = 0; i < text.length(); i++) {
-            drawScoreDigit(text.charAt(i), startX + i * (digitWidth + gap) + 3f, y - 3f, digitWidth, digitHeight);
+            drawScoreDigit(text.charAt(i), startX + i * (digitWidth + gap) + 4f, y - 4f, digitWidth, digitHeight);
         }
-        shapes.setColor(0.88f, 0.96f, 1f, 0.98f);
+        shapes.setColor(0.16f, 0.64f, 1f, 0.34f);
         for (int i = 0; i < text.length(); i++) {
             drawScoreDigit(text.charAt(i), startX + i * (digitWidth + gap), y, digitWidth, digitHeight);
         }
-        shapes.setColor(0.38f, 0.74f, 1f, 0.28f);
-        shapes.rect(startX - gap * 0.6f, y - digitHeight * 0.12f, totalWidth + gap * 1.2f, 3f);
+        shapes.setColor(0.91f, 0.98f, 1f, 0.98f);
+        for (int i = 0; i < text.length(); i++) {
+            drawScoreDigit(text.charAt(i), startX + i * (digitWidth + gap), y, digitWidth, digitHeight);
+        }
+    }
+
+    private void drawScoreLabel(String scoreText) {
+        float digitHeight = MathUtils.clamp(topHudHeight() * 0.36f, 50f, 78f);
+        float digitWidth = digitHeight * 0.58f;
+        float gap = digitHeight * 0.16f;
+        float totalWidth = scoreText.length() * digitWidth + Math.max(0, scoreText.length() - 1) * gap;
+        float centerX = Gdx.graphics.getWidth() * 0.5f;
+        float digitY = Gdx.graphics.getHeight() - topHudHeight() * 0.74f;
+        float labelY = digitY + digitHeight + digitHeight * 0.34f;
+        float scale = hudScale(0.62f);
+
+        drawCenteredText("SCORE", centerX + 1f, labelY - 1f, scale, Color.valueOf("06121E"));
+        drawCenteredText("SCORE", centerX, labelY, scale, Color.valueOf("78C8FF"));
     }
 
     private void drawScoreDigit(char digit, float x, float y, float width, float height) {
@@ -1786,6 +1860,102 @@ public class Main extends ApplicationAdapter {
         Texture texture = new Texture(Gdx.files.internal(path));
         texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
         return texture;
+    }
+
+    private Texture loadBombTexture(String colorName, Color fallbackColor) {
+        Texture texture = loadTextureMatching(
+            new String[] {"bombs", "bomb"},
+            new String[] {colorName},
+            new String[] {"bomb"}
+        );
+        if (texture != null) {
+            return texture;
+        }
+        return createBombTexture(fallbackColor);
+    }
+
+    private Texture loadRocketTexture(String colorName, Color fallbackColor, boolean horizontal) {
+        String[] orientationTokens = horizontal
+            ? new String[] {"horizontal", "horiz", "row", "h"}
+            : new String[] {"vertical", "vert", "column", "v"};
+        Texture texture = loadTextureMatching(new String[] {"rockets", "rocket"}, new String[] {colorName}, orientationTokens);
+        if (texture != null) {
+            return texture;
+        }
+        if (!horizontal) {
+            texture = loadTextureMatching(new String[] {"rockets", "rocket"}, new String[] {colorName}, new String[] {"rocket"});
+            if (texture != null) {
+                return texture;
+            }
+        }
+        return createRocketTexture(fallbackColor, horizontal);
+    }
+
+    private Texture loadRocketTexture(String colorName, Color fallbackColor) {
+        Texture texture = loadTextureMatching(
+            new String[] {"rockets", "rocket"},
+            new String[] {colorName},
+            new String[] {"vertical", "vert", "column", "v", "rocket"}
+        );
+        if (texture != null) {
+            return texture;
+        }
+        texture = loadTextureMatching(new String[] {"rockets", "rocket"}, new String[] {colorName}, new String[] {"rocket"});
+        if (texture != null) {
+            return texture;
+        }
+        return createRocketTexture(fallbackColor, false);
+    }
+
+    private Texture loadLightningTexture(String colorName, Color fallbackColor) {
+        Texture texture = loadTextureMatching(
+            new String[] {"lightnings", "lightning"},
+            new String[] {colorName},
+            new String[] {"lightning", "bolt"}
+        );
+        if (texture != null) {
+            return texture;
+        }
+        return createLightningTexture(fallbackColor);
+    }
+
+    private Texture loadTextureMatching(String[] directories, String[] requiredTokens, String[] optionalTokens) {
+        for (String directory : directories) {
+            FileHandle folder = Gdx.files.internal(directory);
+            if (!folder.exists() || !folder.isDirectory()) {
+                continue;
+            }
+            for (FileHandle file : folder.list()) {
+                String name = file.name().toLowerCase();
+                if (!name.endsWith(".png")) {
+                    continue;
+                }
+                if (containsAllTokens(name, requiredTokens) && containsAnyToken(name, optionalTokens)) {
+                    Texture texture = new Texture(file);
+                    texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+                    return texture;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean containsAllTokens(String name, String[] tokens) {
+        for (String token : tokens) {
+            if (!name.contains(token)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean containsAnyToken(String name, String[] tokens) {
+        for (String token : tokens) {
+            if (name.contains(token)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Texture createGemTexture(Color baseColor, int gemType) {
@@ -2169,6 +2339,10 @@ public class Main extends ApplicationAdapter {
             && worldY <= restartButtonY() + restartButtonHeight();
     }
 
+    private boolean isRestartButtonHovering() {
+        return isRestartButtonHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
+    }
+
     private float hudMenuButtonWidth() {
         return MathUtils.clamp(Gdx.graphics.getWidth() * 0.18f, 104f, 138f);
     }
@@ -2192,12 +2366,32 @@ public class Main extends ApplicationAdapter {
             && worldY <= hudMenuButtonY() + hudMenuButtonHeight();
     }
 
+    private boolean isHudMenuButtonHovering() {
+        return isMenuButtonHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
+    }
+
     private float menuButtonWidth() {
-        return MathUtils.clamp(Gdx.graphics.getWidth() * 0.46f, 240f, 330f);
+        return MathUtils.clamp(menuPanelWidth() * 0.62f, 230f, 300f);
     }
 
     private float menuActionButtonHeight() {
-        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.074f, 58f, 76f);
+        return MathUtils.clamp(menuPanelHeight() * 0.16f, 54f, 66f);
+    }
+
+    private float menuPanelWidth() {
+        return MathUtils.clamp(Gdx.graphics.getWidth() * 0.74f, 360f, 500f);
+    }
+
+    private float menuPanelHeight() {
+        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.42f, 330f, 395f);
+    }
+
+    private float menuPanelX() {
+        return (Gdx.graphics.getWidth() - menuPanelWidth()) * 0.5f;
+    }
+
+    private float menuPanelY() {
+        return (Gdx.graphics.getHeight() - menuPanelHeight()) * 0.5f;
     }
 
     private float playButtonX() {
@@ -2205,7 +2399,8 @@ public class Main extends ApplicationAdapter {
     }
 
     private float playButtonY() {
-        return Gdx.graphics.getHeight() * 0.37f;
+        float groupHeight = menuActionButtonHeight() * 2f + menuButtonGap();
+        return menuPanelY() + menuPanelHeight() * 0.24f + groupHeight - menuActionButtonHeight();
     }
 
     private float exitButtonX() {
@@ -2213,7 +2408,11 @@ public class Main extends ApplicationAdapter {
     }
 
     private float exitButtonY() {
-        return playButtonY() - menuActionButtonHeight() - MathUtils.clamp(Gdx.graphics.getHeight() * 0.025f, 18f, 28f);
+        return playButtonY() - menuActionButtonHeight() - menuButtonGap();
+    }
+
+    private float menuButtonGap() {
+        return MathUtils.clamp(menuPanelHeight() * 0.06f, 18f, 24f);
     }
 
     private boolean isPlayButtonHit(int screenX, int worldY) {
@@ -2223,11 +2422,19 @@ public class Main extends ApplicationAdapter {
             && worldY <= playButtonY() + menuActionButtonHeight();
     }
 
+    private boolean isPlayButtonHovering() {
+        return isPlayButtonHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
+    }
+
     private boolean isExitButtonHit(int screenX, int worldY) {
         return screenX >= exitButtonX()
             && screenX <= exitButtonX() + menuButtonWidth()
             && worldY >= exitButtonY()
             && worldY <= exitButtonY() + menuActionButtonHeight();
+    }
+
+    private boolean isExitButtonHovering() {
+        return isExitButtonHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
     }
 
     private float hudScale(float multiplier) {
@@ -2272,7 +2479,9 @@ public class Main extends ApplicationAdapter {
             texture.dispose();
         }
         for (Texture texture : rocketHorizontalTextures) {
-            texture.dispose();
+            if (texture != null && !isTextureInArray(texture, rocketVerticalTextures)) {
+                texture.dispose();
+            }
         }
         for (Texture texture : rocketVerticalTextures) {
             texture.dispose();
@@ -2283,5 +2492,14 @@ public class Main extends ApplicationAdapter {
         for (Texture texture : lightningTextures) {
             texture.dispose();
         }
+    }
+
+    private boolean isTextureInArray(Texture texture, Texture[] textures) {
+        for (Texture existing : textures) {
+            if (texture == existing) {
+                return true;
+            }
+        }
+        return false;
     }
 }
