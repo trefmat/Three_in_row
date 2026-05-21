@@ -1,13 +1,16 @@
 package io.trefmat.three_in_row;
 
+import static io.trefmat.three_in_row.GameLayout.*;
+import static io.trefmat.three_in_row.GameAssets.*;
+import static io.trefmat.three_in_row.CellType.*;
+import static io.trefmat.three_in_row.GameConfig.*;
+
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
-import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
-import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
@@ -18,13 +21,6 @@ import com.badlogic.gdx.math.MathUtils;
 
 /** {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms. */
 public class Main extends ApplicationAdapter {
-    private static final int BOARD_SIZE = 8;
-    private static final int GEM_TYPES = 6;
-    private static final int EMPTY = -1;
-    private static final int ROCKET_HORIZONTAL = 100;
-    private static final int ROCKET_VERTICAL = 200;
-    private static final int BOMB = 300;
-    private static final int LIGHTNING = 400;
     private static final String[] GEM_COLOR_NAMES = {"blue", "green", "red", "yellow", "purple", "orange"};
     private static final float INVALID_FLASH_TIME = 0.25f;
     private static final float SWAP_TIME = 0.18f;
@@ -33,8 +29,8 @@ public class Main extends ApplicationAdapter {
     private static final float MATCH_CLEAR_TIME = 0.22f;
     private static final float BOOSTER_BLAST_TIME = 0.36f;
     private static final float RESTART_ANIMATION_TIME = 1.05f;
-    private static final float MENU_BUTTON_GAP = 18f;
-    private static final float ROCKET_DRAW_SCALE = 1.25f;
+    private static final float BOOSTER_DRAW_SCALE = 1.16f;
+    private static final float ROCKET_DRAW_SCALE = 1.30f;
 
     private final int[][] board = new int[BOARD_SIZE][BOARD_SIZE];
     private final float[][] drawRows = new float[BOARD_SIZE][BOARD_SIZE];
@@ -92,23 +88,6 @@ public class Main extends ApplicationAdapter {
     private boolean restartAnimating;
     private boolean restartBoardRebuilt;
     private float restartAnimationTimer;
-
-    private enum GameScreen {
-        MENU,
-        PLAYING
-    }
-
-    private enum AnimationState {
-        IDLE,
-        VALID_SWAP,
-        LIGHTNING_SWAP,
-        BOOSTER_SWAP,
-        INVALID_SWAP_OUT,
-        INVALID_SWAP_BACK,
-        MATCH_CLEAR,
-        BOOSTER_BLAST,
-        FALLING
-    }
 
     @Override
     public void create() {
@@ -1336,7 +1315,8 @@ public class Main extends ApplicationAdapter {
     }
 
     private void drawMenuGemStrip(float centerX, float centerY) {
-        float size = MathUtils.clamp(Gdx.graphics.getWidth() * 0.075f, 42f, 58f);
+        float scale = uiScale();
+        float size = MathUtils.clamp(Gdx.graphics.getWidth() * 0.075f, 34f * scale, 58f * scale);
         float gap = size * 0.72f;
 
         batch.begin();
@@ -1462,13 +1442,55 @@ public class Main extends ApplicationAdapter {
 
     private void drawCellTexture(int gem, float x, float y, float size) {
         Texture texture = textureForCell(gem);
-        if (isRocket(gem)) {
-            float rocketSize = size * ROCKET_DRAW_SCALE;
-            float rocketOffset = (rocketSize - size) * 0.5f;
-            x -= rocketOffset;
-            y -= rocketOffset;
-            size = rocketSize;
+        if (isBooster(gem)) {
+            float boosterScale = isRocket(gem) ? ROCKET_DRAW_SCALE : BOOSTER_DRAW_SCALE;
+            float boosterSize = size * boosterScale;
+            float boosterOffset = (boosterSize - size) * 0.5f;
+            x -= boosterOffset;
+            y -= boosterOffset;
+            size = boosterSize;
+            drawBoosterTextureGlow(gem, texture, x, y, size);
         }
+        drawCellTextureRaw(gem, texture, x, y, size);
+    }
+
+    private void drawBoosterTextureGlow(int gem, Texture texture, float x, float y, float size) {
+        Color previous = new Color(batch.getColor());
+        float pulse = 0.5f + 0.5f * MathUtils.sin(menuTime * 3.2f);
+        Color glow = boosterGlowColor(gem);
+        float haloSize = size * (1.34f + pulse * 0.06f);
+        float outlineSize = size * (1.09f + pulse * 0.02f);
+        float outlineOffset = size * (0.045f + pulse * 0.012f);
+
+        batch.setColor(glow.r, glow.g, glow.b, previous.a * (0.36f + pulse * 0.16f));
+        drawCellTextureRaw(gem, texture, x - (haloSize - size) * 0.5f, y - (haloSize - size) * 0.5f, haloSize);
+        batch.setColor(glow.r, glow.g, glow.b, previous.a * (0.46f + pulse * 0.14f));
+        drawCellTextureRaw(gem, texture, x - outlineOffset, y, outlineSize);
+        drawCellTextureRaw(gem, texture, x + outlineOffset, y, outlineSize);
+        drawCellTextureRaw(gem, texture, x, y - outlineOffset, outlineSize);
+        drawCellTextureRaw(gem, texture, x, y + outlineOffset, outlineSize);
+        batch.setColor(1f, 1f, 1f, previous.a * (0.22f + pulse * 0.08f));
+        drawCellTextureRaw(gem, texture, x - (outlineSize - size) * 0.5f, y - (outlineSize - size) * 0.5f, outlineSize);
+        batch.setColor(previous);
+    }
+
+    private Color boosterGlowColor(int gem) {
+        int type = baseGemType(gem);
+        if (type == 0) {
+            return Color.valueOf("2ED6FF");
+        } else if (type == 1) {
+            return Color.valueOf("45FF85");
+        } else if (type == 2) {
+            return Color.valueOf("FF3F61");
+        } else if (type == 3) {
+            return Color.valueOf("FFE052");
+        } else if (type == 4) {
+            return Color.valueOf("A96DFF");
+        }
+        return Color.valueOf("FF8B38");
+    }
+
+    private void drawCellTextureRaw(int gem, Texture texture, float x, float y, float size) {
         if (isHorizontalRocket(gem)) {
             batch.draw(
                 texture,
@@ -1731,7 +1753,8 @@ public class Main extends ApplicationAdapter {
     }
 
     private void drawScoreNumberShapes(String text) {
-        float digitHeight = MathUtils.clamp(topHudHeight() * 0.36f, 50f, 78f);
+        float scale = uiScale();
+        float digitHeight = MathUtils.clamp(topHudHeight() * 0.36f, 42f * scale, 78f * scale);
         float digitWidth = digitHeight * 0.58f;
         float gap = digitHeight * 0.16f;
         float totalWidth = text.length() * digitWidth + Math.max(0, text.length() - 1) * gap;
@@ -1770,17 +1793,15 @@ public class Main extends ApplicationAdapter {
     }
 
     private void drawScoreLabel(String scoreText) {
-        float digitHeight = MathUtils.clamp(topHudHeight() * 0.36f, 50f, 78f);
-        float digitWidth = digitHeight * 0.58f;
-        float gap = digitHeight * 0.16f;
-        float totalWidth = scoreText.length() * digitWidth + Math.max(0, scoreText.length() - 1) * gap;
+        float scale = uiScale();
+        float digitHeight = MathUtils.clamp(topHudHeight() * 0.36f, 42f * scale, 78f * scale);
         float centerX = Gdx.graphics.getWidth() * 0.5f;
         float digitY = Gdx.graphics.getHeight() - topHudHeight() * 0.74f;
         float labelY = digitY + digitHeight + digitHeight * 0.34f;
-        float scale = hudScale(0.62f);
+        float textScale = hudScale(0.62f);
 
-        drawCenteredText("SCORE", centerX + 1f, labelY - 1f, scale, Color.valueOf("06121E"));
-        drawCenteredText("SCORE", centerX, labelY, scale, Color.valueOf("78C8FF"));
+        drawCenteredText("SCORE", centerX + 1f, labelY - 1f, textScale, Color.valueOf("06121E"));
+        drawCenteredText("SCORE", centerX, labelY, textScale, Color.valueOf("78C8FF"));
     }
 
     private void drawScoreDigit(char digit, float x, float y, float width, float height) {
@@ -1836,385 +1857,6 @@ public class Main extends ApplicationAdapter {
         shapes.circle(x + thickness * 0.5f, y + height - thickness * 0.5f, thickness * 0.5f, 16);
     }
 
-    private Texture createBackgroundTexture() {
-        int width = 16;
-        int height = 256;
-        Pixmap pixmap = new Pixmap(width, height, Pixmap.Format.RGBA8888);
-        Color top = Color.valueOf("171B2E");
-        Color bottom = Color.valueOf("07131A");
-
-        for (int y = 0; y < height; y++) {
-            float t = (float) y / (height - 1);
-            Color rowColor = new Color(bottom).lerp(top, t);
-            pixmap.setColor(rowColor);
-            pixmap.drawLine(0, y, width, y);
-        }
-
-        Texture texture = new Texture(pixmap);
-        texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-        pixmap.dispose();
-        return texture;
-    }
-
-    private Texture loadGemTexture(String path) {
-        Texture texture = new Texture(Gdx.files.internal(path));
-        texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-        return texture;
-    }
-
-    private Texture loadBombTexture(String colorName, Color fallbackColor) {
-        Texture texture = loadTextureMatching(
-            new String[] {"bombs", "bomb"},
-            new String[] {colorName},
-            new String[] {"bomb"}
-        );
-        if (texture != null) {
-            return texture;
-        }
-        return createBombTexture(fallbackColor);
-    }
-
-    private Texture loadRocketTexture(String colorName, Color fallbackColor, boolean horizontal) {
-        String[] orientationTokens = horizontal
-            ? new String[] {"horizontal", "horiz", "row", "h"}
-            : new String[] {"vertical", "vert", "column", "v"};
-        Texture texture = loadTextureMatching(new String[] {"rockets", "rocket"}, new String[] {colorName}, orientationTokens);
-        if (texture != null) {
-            return texture;
-        }
-        if (!horizontal) {
-            texture = loadTextureMatching(new String[] {"rockets", "rocket"}, new String[] {colorName}, new String[] {"rocket"});
-            if (texture != null) {
-                return texture;
-            }
-        }
-        return createRocketTexture(fallbackColor, horizontal);
-    }
-
-    private Texture loadRocketTexture(String colorName, Color fallbackColor) {
-        Texture texture = loadTextureMatching(
-            new String[] {"rockets", "rocket"},
-            new String[] {colorName},
-            new String[] {"vertical", "vert", "column", "v", "rocket"}
-        );
-        if (texture != null) {
-            return texture;
-        }
-        texture = loadTextureMatching(new String[] {"rockets", "rocket"}, new String[] {colorName}, new String[] {"rocket"});
-        if (texture != null) {
-            return texture;
-        }
-        return createRocketTexture(fallbackColor, false);
-    }
-
-    private Texture loadLightningTexture(String colorName, Color fallbackColor) {
-        Texture texture = loadTextureMatching(
-            new String[] {"lightnings", "lightning"},
-            new String[] {colorName},
-            new String[] {"lightning", "bolt"}
-        );
-        if (texture != null) {
-            return texture;
-        }
-        return createLightningTexture(fallbackColor);
-    }
-
-    private Texture loadTextureMatching(String[] directories, String[] requiredTokens, String[] optionalTokens) {
-        for (String directory : directories) {
-            FileHandle folder = Gdx.files.internal(directory);
-            if (!folder.exists() || !folder.isDirectory()) {
-                continue;
-            }
-            for (FileHandle file : folder.list()) {
-                String name = file.name().toLowerCase();
-                if (!name.endsWith(".png")) {
-                    continue;
-                }
-                if (containsAllTokens(name, requiredTokens) && containsAnyToken(name, optionalTokens)) {
-                    Texture texture = new Texture(file);
-                    texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-                    return texture;
-                }
-            }
-        }
-        return null;
-    }
-
-    private boolean containsAllTokens(String name, String[] tokens) {
-        for (String token : tokens) {
-            if (!name.contains(token)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private boolean containsAnyToken(String name, String[] tokens) {
-        for (String token : tokens) {
-            if (name.contains(token)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private Texture createGemTexture(Color baseColor, int gemType) {
-        int size = 128;
-        Pixmap pixmap = new Pixmap(size, size, Pixmap.Format.RGBA8888);
-        pixmap.setBlending(Pixmap.Blending.SourceOver);
-
-        Color dark = new Color(baseColor).lerp(Color.BLACK, 0.35f);
-        Color light = new Color(baseColor).lerp(Color.WHITE, 0.42f);
-        Color shine = new Color(baseColor).lerp(Color.WHITE, 0.78f);
-
-        pixmap.setColor(0f, 0f, 0f, 0f);
-        pixmap.fill();
-
-        pixmap.setColor(0f, 0f, 0f, 0.28f);
-        pixmap.fillCircle(68, 72, 52);
-
-        if (gemType == 0) {
-            drawDiamondGem(pixmap, baseColor, dark, light);
-        } else if (gemType == 1) {
-            drawRoundGem(pixmap, baseColor, dark, light);
-        } else if (gemType == 2) {
-            drawSquareGem(pixmap, baseColor, dark, light);
-        } else if (gemType == 3) {
-            drawHexGem(pixmap, baseColor, dark, light);
-        } else if (gemType == 4) {
-            drawTriangleGem(pixmap, baseColor, dark, light);
-        } else {
-            drawShardGem(pixmap, baseColor, dark, light);
-        }
-
-        pixmap.setColor(shine);
-        pixmap.fillCircle(47, 34, 9);
-        pixmap.setColor(1f, 1f, 1f, 0.64f);
-        pixmap.fillCircle(43, 30, 4);
-
-        Texture texture = new Texture(pixmap);
-        texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-        pixmap.dispose();
-        return texture;
-    }
-
-    private Texture createRocketTexture(Color baseColor, boolean horizontal) {
-        int size = 128;
-        Pixmap pixmap = new Pixmap(size, size, Pixmap.Format.RGBA8888);
-        pixmap.setBlending(Pixmap.Blending.SourceOver);
-
-        Color dark = new Color(baseColor).lerp(Color.BLACK, 0.38f);
-        Color light = new Color(baseColor).lerp(Color.WHITE, 0.5f);
-        pixmap.setColor(0f, 0f, 0f, 0f);
-        pixmap.fill();
-
-        pixmap.setColor(0f, 0f, 0f, 0.28f);
-        pixmap.fillCircle(68, 72, 50);
-
-        if (horizontal) {
-            pixmap.setColor(dark);
-            pixmap.fillRectangle(24, 45, 68, 38);
-            pixmap.fillTriangle(92, 38, 118, 64, 92, 90);
-            pixmap.fillTriangle(24, 45, 8, 32, 24, 64);
-            pixmap.fillTriangle(24, 83, 8, 96, 24, 64);
-            pixmap.setColor(baseColor);
-            pixmap.fillRectangle(28, 49, 61, 30);
-            pixmap.setColor(light);
-            pixmap.fillRectangle(32, 52, 49, 8);
-            pixmap.setColor(Color.WHITE);
-            pixmap.fillCircle(58, 64, 9);
-            pixmap.setColor(1f, 0.82f, 0.25f, 1f);
-            pixmap.fillTriangle(8, 64, 0, 48, 0, 80);
-        } else {
-            pixmap.setColor(dark);
-            pixmap.fillRectangle(45, 36, 38, 68);
-            pixmap.fillTriangle(38, 36, 64, 10, 90, 36);
-            pixmap.fillTriangle(45, 104, 32, 120, 64, 104);
-            pixmap.fillTriangle(83, 104, 96, 120, 64, 104);
-            pixmap.setColor(baseColor);
-            pixmap.fillRectangle(49, 39, 30, 61);
-            pixmap.setColor(light);
-            pixmap.fillRectangle(52, 46, 8, 43);
-            pixmap.setColor(Color.WHITE);
-            pixmap.fillCircle(64, 70, 9);
-            pixmap.setColor(1f, 0.82f, 0.25f, 1f);
-            pixmap.fillTriangle(64, 120, 48, 128, 80, 128);
-        }
-
-        pixmap.setColor(1f, 1f, 1f, 0.55f);
-        pixmap.drawCircle(64, 64, 54);
-
-        Texture texture = new Texture(pixmap);
-        texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-        pixmap.dispose();
-        return texture;
-    }
-
-    private Texture createBombTexture(Color baseColor) {
-        int size = 128;
-        Pixmap pixmap = new Pixmap(size, size, Pixmap.Format.RGBA8888);
-        pixmap.setBlending(Pixmap.Blending.SourceOver);
-
-        Color dark = new Color(baseColor).lerp(Color.BLACK, 0.45f);
-        Color light = new Color(baseColor).lerp(Color.WHITE, 0.55f);
-        pixmap.setColor(0f, 0f, 0f, 0f);
-        pixmap.fill();
-
-        pixmap.setColor(0f, 0f, 0f, 0.32f);
-        pixmap.fillCircle(68, 72, 51);
-        pixmap.setColor(dark);
-        pixmap.fillCircle(64, 68, 42);
-        pixmap.setColor(baseColor);
-        pixmap.fillCircle(60, 64, 39);
-        pixmap.setColor(light);
-        pixmap.fillCircle(47, 48, 15);
-
-        pixmap.setColor(0.18f, 0.16f, 0.12f, 1f);
-        pixmap.fillRectangle(78, 23, 10, 25);
-        pixmap.fillTriangle(75, 26, 93, 26, 84, 13);
-        pixmap.setColor(1f, 0.78f, 0.22f, 1f);
-        pixmap.fillCircle(84, 13, 8);
-        pixmap.setColor(1f, 0.28f, 0.14f, 1f);
-        pixmap.fillCircle(84, 13, 4);
-
-        pixmap.setColor(1f, 1f, 1f, 0.58f);
-        pixmap.drawCircle(60, 64, 39);
-        pixmap.drawCircle(60, 64, 40);
-
-        Texture texture = new Texture(pixmap);
-        texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-        pixmap.dispose();
-        return texture;
-    }
-
-    private Texture createLightningTexture(Color baseColor) {
-        int size = 128;
-        Pixmap pixmap = new Pixmap(size, size, Pixmap.Format.RGBA8888);
-        pixmap.setBlending(Pixmap.Blending.SourceOver);
-
-        Color glow = new Color(baseColor).lerp(Color.WHITE, 0.55f);
-        pixmap.setColor(0f, 0f, 0f, 0f);
-        pixmap.fill();
-        pixmap.setColor(0f, 0f, 0f, 0.30f);
-        pixmap.fillCircle(68, 72, 51);
-        pixmap.setColor(baseColor);
-        pixmap.fillCircle(64, 64, 46);
-        pixmap.setColor(1f, 1f, 1f, 0.20f);
-        pixmap.fillCircle(64, 64, 39);
-
-        pixmap.setColor(1f, 0.94f, 0.26f, 1f);
-        pixmap.fillTriangle(71, 8, 38, 70, 63, 67);
-        pixmap.fillTriangle(63, 67, 49, 120, 93, 52);
-        pixmap.setColor(glow);
-        pixmap.fillTriangle(67, 18, 47, 61, 64, 59);
-        pixmap.fillTriangle(64, 59, 56, 102, 82, 58);
-        pixmap.setColor(1f, 1f, 1f, 0.70f);
-        pixmap.drawCircle(64, 64, 50);
-
-        Texture texture = new Texture(pixmap);
-        texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-        pixmap.dispose();
-        return texture;
-    }
-
-    private void drawDiamondGem(Pixmap pixmap, Color baseColor, Color dark, Color light) {
-        pixmap.setColor(dark);
-        pixmap.fillTriangle(64, 8, 120, 44, 64, 122);
-        pixmap.fillTriangle(64, 8, 64, 122, 8, 44);
-        pixmap.setColor(baseColor);
-        pixmap.fillTriangle(8, 44, 64, 8, 42, 44);
-        pixmap.fillTriangle(42, 44, 64, 122, 8, 44);
-        pixmap.fillTriangle(64, 8, 86, 44, 120, 44);
-        pixmap.fillTriangle(86, 44, 120, 44, 64, 122);
-        pixmap.setColor(light);
-        pixmap.fillTriangle(42, 44, 64, 8, 86, 44);
-        pixmap.fillTriangle(42, 44, 86, 44, 64, 122);
-        drawGemLines(pixmap, 64, 8, 120, 44, 64, 122, 8, 44);
-    }
-
-    private void drawRoundGem(Pixmap pixmap, Color baseColor, Color dark, Color light) {
-        pixmap.setColor(dark);
-        pixmap.fillCircle(66, 66, 55);
-        pixmap.setColor(baseColor);
-        pixmap.fillCircle(62, 62, 50);
-        pixmap.setColor(light);
-        pixmap.fillCircle(49, 45, 24);
-        pixmap.setColor(1f, 1f, 1f, 0.42f);
-        pixmap.drawCircle(62, 62, 50);
-        pixmap.drawLine(27, 64, 97, 64);
-        pixmap.drawLine(62, 14, 62, 112);
-    }
-
-    private void drawSquareGem(Pixmap pixmap, Color baseColor, Color dark, Color light) {
-        pixmap.setColor(dark);
-        pixmap.fillRectangle(27, 27, 78, 78);
-        pixmap.setColor(baseColor);
-        pixmap.fillRectangle(22, 22, 78, 78);
-        pixmap.setColor(light);
-        pixmap.fillTriangle(22, 22, 100, 22, 22, 100);
-        pixmap.setColor(1f, 1f, 1f, 0.48f);
-        pixmap.drawRectangle(22, 22, 78, 78);
-        pixmap.drawLine(22, 22, 100, 100);
-        pixmap.drawLine(100, 22, 22, 100);
-    }
-
-    private void drawHexGem(Pixmap pixmap, Color baseColor, Color dark, Color light) {
-        pixmap.setColor(dark);
-        pixmap.fillRectangle(29, 28, 70, 76);
-        pixmap.fillTriangle(29, 28, 64, 8, 99, 28);
-        pixmap.fillTriangle(29, 104, 99, 104, 64, 122);
-        pixmap.setColor(baseColor);
-        pixmap.fillRectangle(25, 30, 70, 68);
-        pixmap.fillTriangle(25, 30, 64, 12, 95, 30);
-        pixmap.fillTriangle(25, 98, 95, 98, 64, 116);
-        pixmap.setColor(light);
-        pixmap.fillTriangle(25, 30, 64, 12, 64, 64);
-        pixmap.fillTriangle(25, 30, 64, 64, 25, 98);
-        drawGemLines(pixmap, 64, 12, 95, 30, 64, 116, 25, 98);
-    }
-
-    private void drawTriangleGem(Pixmap pixmap, Color baseColor, Color dark, Color light) {
-        pixmap.setColor(dark);
-        pixmap.fillTriangle(64, 10, 118, 112, 10, 112);
-        pixmap.setColor(baseColor);
-        pixmap.fillTriangle(64, 6, 112, 108, 16, 108);
-        pixmap.setColor(light);
-        pixmap.fillTriangle(64, 6, 64, 108, 16, 108);
-        pixmap.setColor(1f, 1f, 1f, 0.48f);
-        pixmap.drawLine(64, 6, 112, 108);
-        pixmap.drawLine(112, 108, 16, 108);
-        pixmap.drawLine(16, 108, 64, 6);
-        pixmap.drawLine(64, 6, 64, 108);
-    }
-
-    private void drawShardGem(Pixmap pixmap, Color baseColor, Color dark, Color light) {
-        pixmap.setColor(dark);
-        pixmap.fillTriangle(62, 6, 104, 42, 74, 122);
-        pixmap.fillTriangle(62, 6, 74, 122, 18, 78);
-        pixmap.setColor(baseColor);
-        pixmap.fillTriangle(62, 6, 96, 44, 60, 70);
-        pixmap.fillTriangle(60, 70, 74, 122, 18, 78);
-        pixmap.fillTriangle(60, 70, 96, 44, 74, 122);
-        pixmap.setColor(light);
-        pixmap.fillTriangle(62, 6, 60, 70, 18, 78);
-        pixmap.setColor(1f, 1f, 1f, 0.48f);
-        pixmap.drawLine(62, 6, 104, 42);
-        pixmap.drawLine(104, 42, 74, 122);
-        pixmap.drawLine(74, 122, 18, 78);
-        pixmap.drawLine(18, 78, 62, 6);
-        pixmap.drawLine(60, 70, 74, 122);
-    }
-
-    private void drawGemLines(Pixmap pixmap, int topX, int topY, int rightX, int rightY, int bottomX, int bottomY, int leftX, int leftY) {
-        pixmap.setColor(1f, 1f, 1f, 0.5f);
-        pixmap.drawLine(topX, topY, rightX, rightY);
-        pixmap.drawLine(rightX, rightY, bottomX, bottomY);
-        pixmap.drawLine(bottomX, bottomY, leftX, leftY);
-        pixmap.drawLine(leftX, leftY, topX, topY);
-        pixmap.drawLine(leftX, leftY, rightX, rightY);
-        pixmap.drawLine(topX, topY, bottomX, bottomY);
-    }
-
     private Texture textureForCell(int cell) {
         int gemType = baseGemType(cell);
         if (isHorizontalRocket(cell)) {
@@ -2230,215 +1872,6 @@ public class Main extends ApplicationAdapter {
             return lightningTextures[gemType];
         }
         return gemTextures[gemType];
-    }
-
-    private boolean sameGemType(int first, int second) {
-        return first != EMPTY && second != EMPTY && baseGemType(first) == baseGemType(second);
-    }
-
-    private int baseGemType(int cell) {
-        if (isHorizontalRocket(cell)) {
-            return cell - ROCKET_HORIZONTAL;
-        }
-        if (isVerticalRocket(cell)) {
-            return cell - ROCKET_VERTICAL;
-        }
-        if (isBomb(cell)) {
-            return cell - BOMB;
-        }
-        if (isLightning(cell)) {
-            return cell - LIGHTNING;
-        }
-        return cell;
-    }
-
-    private int makeRocket(int gemType, boolean horizontal) {
-        return (horizontal ? ROCKET_HORIZONTAL : ROCKET_VERTICAL) + gemType;
-    }
-
-    private boolean isRocket(int cell) {
-        return isHorizontalRocket(cell) || isVerticalRocket(cell);
-    }
-
-    private boolean isBooster(int cell) {
-        return isRocket(cell) || isBomb(cell) || isLightning(cell);
-    }
-
-    private int makeBomb(int gemType) {
-        return BOMB + gemType;
-    }
-
-    private int makeLightning(int gemType) {
-        return LIGHTNING + gemType;
-    }
-
-    private boolean isHorizontalRocket(int cell) {
-        return cell >= ROCKET_HORIZONTAL && cell < ROCKET_HORIZONTAL + GEM_TYPES;
-    }
-
-    private boolean isVerticalRocket(int cell) {
-        return cell >= ROCKET_VERTICAL && cell < ROCKET_VERTICAL + GEM_TYPES;
-    }
-
-    private boolean isBomb(int cell) {
-        return cell >= BOMB && cell < BOMB + GEM_TYPES;
-    }
-
-    private boolean isLightning(int cell) {
-        return cell >= LIGHTNING && cell < LIGHTNING + GEM_TYPES;
-    }
-
-    private float topHudHeight() {
-        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.22f, 152f, 230f);
-    }
-
-    private float bottomHudHeight() {
-        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.14f, 112f, 150f);
-    }
-
-    private float cellSize() {
-        float availableWidth = Gdx.graphics.getWidth() * 0.92f;
-        float availableHeight = Gdx.graphics.getHeight() - topHudHeight() - bottomHudHeight();
-        return Math.max(38f, Math.min(availableWidth, availableHeight) / BOARD_SIZE);
-    }
-
-    private float boardX() {
-        return (Gdx.graphics.getWidth() - cellSize() * BOARD_SIZE) * 0.5f;
-    }
-
-    private float boardY() {
-        float playBottom = bottomHudHeight();
-        float playHeight = Gdx.graphics.getHeight() - topHudHeight() - bottomHudHeight();
-        return playBottom + (playHeight - cellSize() * BOARD_SIZE) * 0.48f;
-    }
-
-    private float restartButtonWidth() {
-        return restartButtonSize();
-    }
-
-    private float restartButtonHeight() {
-        return restartButtonSize();
-    }
-
-    private float restartButtonSize() {
-        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.082f, 72f, 94f);
-    }
-
-    private float restartButtonX() {
-        return (Gdx.graphics.getWidth() - restartButtonWidth()) * 0.5f;
-    }
-
-    private float restartButtonY() {
-        return Math.max(22f, bottomHudHeight() * 0.18f);
-    }
-
-    private boolean isRestartButtonHit(int screenX, int worldY) {
-        return screenX >= restartButtonX()
-            && screenX <= restartButtonX() + restartButtonWidth()
-            && worldY >= restartButtonY()
-            && worldY <= restartButtonY() + restartButtonHeight();
-    }
-
-    private boolean isRestartButtonHovering() {
-        return isRestartButtonHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
-    }
-
-    private float hudMenuButtonWidth() {
-        return MathUtils.clamp(Gdx.graphics.getWidth() * 0.18f, 104f, 138f);
-    }
-
-    private float hudMenuButtonHeight() {
-        return restartButtonHeight();
-    }
-
-    private float hudMenuButtonX() {
-        return Math.max(18f, restartButtonX() - hudMenuButtonWidth() - MENU_BUTTON_GAP);
-    }
-
-    private float hudMenuButtonY() {
-        return restartButtonY();
-    }
-
-    private boolean isMenuButtonHit(int screenX, int worldY) {
-        return screenX >= hudMenuButtonX()
-            && screenX <= hudMenuButtonX() + hudMenuButtonWidth()
-            && worldY >= hudMenuButtonY()
-            && worldY <= hudMenuButtonY() + hudMenuButtonHeight();
-    }
-
-    private boolean isHudMenuButtonHovering() {
-        return isMenuButtonHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
-    }
-
-    private float menuButtonWidth() {
-        return MathUtils.clamp(menuPanelWidth() * 0.62f, 230f, 300f);
-    }
-
-    private float menuActionButtonHeight() {
-        return MathUtils.clamp(menuPanelHeight() * 0.16f, 54f, 66f);
-    }
-
-    private float menuPanelWidth() {
-        return MathUtils.clamp(Gdx.graphics.getWidth() * 0.74f, 360f, 500f);
-    }
-
-    private float menuPanelHeight() {
-        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.42f, 330f, 395f);
-    }
-
-    private float menuPanelX() {
-        return (Gdx.graphics.getWidth() - menuPanelWidth()) * 0.5f;
-    }
-
-    private float menuPanelY() {
-        return (Gdx.graphics.getHeight() - menuPanelHeight()) * 0.5f;
-    }
-
-    private float playButtonX() {
-        return (Gdx.graphics.getWidth() - menuButtonWidth()) * 0.5f;
-    }
-
-    private float playButtonY() {
-        float groupHeight = menuActionButtonHeight() * 2f + menuButtonGap();
-        return menuPanelY() + menuPanelHeight() * 0.24f + groupHeight - menuActionButtonHeight();
-    }
-
-    private float exitButtonX() {
-        return playButtonX();
-    }
-
-    private float exitButtonY() {
-        return playButtonY() - menuActionButtonHeight() - menuButtonGap();
-    }
-
-    private float menuButtonGap() {
-        return MathUtils.clamp(menuPanelHeight() * 0.06f, 18f, 24f);
-    }
-
-    private boolean isPlayButtonHit(int screenX, int worldY) {
-        return screenX >= playButtonX()
-            && screenX <= playButtonX() + menuButtonWidth()
-            && worldY >= playButtonY()
-            && worldY <= playButtonY() + menuActionButtonHeight();
-    }
-
-    private boolean isPlayButtonHovering() {
-        return isPlayButtonHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
-    }
-
-    private boolean isExitButtonHit(int screenX, int worldY) {
-        return screenX >= exitButtonX()
-            && screenX <= exitButtonX() + menuButtonWidth()
-            && worldY >= exitButtonY()
-            && worldY <= exitButtonY() + menuActionButtonHeight();
-    }
-
-    private boolean isExitButtonHovering() {
-        return isExitButtonHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
-    }
-
-    private float hudScale(float multiplier) {
-        return multiplier * MathUtils.clamp(Gdx.graphics.getWidth() / 720f, 0.72f, 1.05f);
     }
 
     private int screenToCol(int screenX) {
