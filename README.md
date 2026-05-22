@@ -1,36 +1,95 @@
-# three_in_row
+# Three in Row
+
+`Three in Row` — казуальная игра в жанре match-3, написанная на Java с использованием [libGDX](https://libgdx.com/). Игрок меняет соседние кристаллы местами, собирает линии из трех и более одинаковых элементов, создает бустеры и набирает очки.
+
+## Возможности
+
+- Поле 8x8 с классической механикой "три в ряд".
+- Обычные кристаллы шести цветов.
+- Бустеры:
+  - ракеты для очистки строки или столбца;
+  - бомбы для взрыва области;
+  - молнии для очистки кристаллов выбранного цвета.
+- Комбинации бустеров.
+- Анимации обмена, падения, очистки и перезапуска.
+- Адаптивный масштаб интерфейса для desktop и Android.
+- Android APK с launcher-иконкой.
+
+## Структура проекта
+
+- `core` — общая игровая логика и рендеринг.
+- `lwjgl3` — desktop-запуск через LWJGL3.
+- `android` — Android-приложение и ресурсы APK.
+- `assets` — игровые изображения: кристаллы, ракеты, бомбы, иконки.
+
+Основные классы в `core`:
+
+- `Main` — основной цикл игры, ввод, состояние партии и рендеринг.
+- `GameLayout` — размеры, позиции элементов UI и адаптивный масштаб.
+- `GameAssets` — загрузка и генерация текстур.
+- `CellType` — типы клеток: обычные кристаллы, ракеты, бомбы, молнии.
+- `GameConfig` — общие настройки поля.
+- `GameScreen` и `AnimationState` — состояния экрана и анимаций.
+
+## Запуск на компьютере
+
+Windows:
+
+```bat
+.\gradlew.bat lwjgl3:run
+```
+
+Linux/macOS:
+
+```bash
 ./gradlew lwjgl3:run
+```
 
-A [libGDX](https://libgdx.com/) project generated with [gdx-liftoff](https://github.com/libgdx/gdx-liftoff).
+## Сборка Android APK
 
-This project was generated with a template including simple application launchers and an `ApplicationAdapter` extension that draws libGDX logo.
+Для сборки нужен установленный Android SDK.
 
-## Platforms
+```bat
+.\gradlew.bat :android:assembleDebug
+```
 
-- `core`: Main module with the application logic shared by all platforms.
-- `lwjgl3`: Primary desktop platform using LWJGL3; was called 'desktop' in older docs.
-- `android`: Android mobile platform. Needs Android SDK.
+Готовый debug APK будет находиться в:
 
-## Gradle
+```text
+android/build/outputs/apk/debug/
+```
 
-This project uses [Gradle](https://gradle.org/) to manage dependencies.
-The Gradle wrapper was included, so you can run Gradle tasks using `gradlew.bat` or `./gradlew` commands.
-Useful Gradle tasks and flags:
+## Полезные команды Gradle
 
-- `--continue`: when using this flag, errors will not stop the tasks from running.
-- `--daemon`: thanks to this flag, Gradle daemon will be used to run chosen tasks.
-- `--offline`: when using this flag, cached dependency archives will be used.
-- `--refresh-dependencies`: this flag forces validation of all dependencies. Useful for snapshot versions.
-- `android:lint`: performs Android project validation.
-- `build`: builds sources and archives of every project.
-- `cleanEclipse`: removes Eclipse project data.
-- `cleanIdea`: removes IntelliJ project data.
-- `clean`: removes `build` folders, which store compiled classes and built archives.
-- `eclipse`: generates Eclipse project data.
-- `idea`: generates IntelliJ project data.
-- `lwjgl3:jar`: builds application's runnable jar, which can be found at `lwjgl3/build/libs`.
-- `lwjgl3:run`: starts the application.
-- `test`: runs unit tests (if any).
+```bat
+.\gradlew.bat core:compileJava
+```
 
-Note that most tasks that are not specific to a single project can be run with `name:` prefix, where the `name` should be replaced with the ID of a specific project.
-For example, `core:clean` removes `build` folder only from the `core` project.
+Проверить компиляцию общего Java-кода.
+
+```bat
+.\gradlew.bat :android:assembleDebug
+```
+
+Собрать Android APK.
+
+```bat
+.\gradlew.bat lwjgl3:run
+```
+
+Запустить desktop-версию.
+
+```bat
+.\gradlew.bat clean
+```
+
+Очистить build-директории.
+
+## Ассеты
+
+Игровые ассеты лежат в папке `assets`:
+
+- `assets/gems` — кристаллы;
+- `assets/rockets` — ракеты;
+- `assets/bombs` — бомбы;
+- `assets/restart.png` — иконка кнопки перезапуска.
