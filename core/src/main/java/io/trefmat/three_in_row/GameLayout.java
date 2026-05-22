@@ -43,7 +43,7 @@ final class GameLayout {
 
     static float restartButtonSize() {
         float scale = uiScale();
-        return MathUtils.clamp(shortSide() * 0.16f, 54f * scale, 88f * scale);
+        return MathUtils.clamp(shortSide() * 0.18f, 64f * scale, 132f * scale);
     }
 
     static float restartButtonX() {
@@ -67,7 +67,7 @@ final class GameLayout {
 
     static float hudMenuButtonWidth() {
         float scale = uiScale();
-        return MathUtils.clamp(shortSide() * 0.28f, 86f * scale, 138f * scale);
+        return MathUtils.clamp(shortSide() * 0.34f, 110f * scale, 190f * scale);
     }
 
     static float hudMenuButtonHeight() {
@@ -95,12 +95,12 @@ final class GameLayout {
 
     static float menuButtonWidth() {
         float scale = uiScale();
-        return MathUtils.clamp(menuPanelWidth() * 0.68f, 190f * scale, 300f * scale);
+        return MathUtils.clamp(menuPanelWidth() * 0.76f, 230f * scale, 390f * scale);
     }
 
     static float menuActionButtonHeight() {
         float scale = uiScale();
-        return MathUtils.clamp(menuPanelHeight() * 0.16f, 48f * scale, 66f * scale);
+        return MathUtils.clamp(shortSide() * 0.105f, 54f * scale, 82f * scale);
     }
 
     static float menuPanelWidth() {
@@ -112,7 +112,7 @@ final class GameLayout {
     static float menuPanelHeight() {
         float scale = uiScale();
         float sidePadding = 28f * scale;
-        return Math.min(Gdx.graphics.getHeight() - sidePadding * 2f, MathUtils.clamp(Gdx.graphics.getHeight() * 0.42f, 300f * scale, 395f * scale));
+        return Math.min(Gdx.graphics.getHeight() - sidePadding * 2f, MathUtils.clamp(Gdx.graphics.getHeight() * 0.58f, 430f * scale, 620f * scale));
     }
 
     static float menuPanelX() {
@@ -128,8 +128,16 @@ final class GameLayout {
     }
 
     static float playButtonY() {
-        float groupHeight = menuActionButtonHeight() * 2f + menuButtonGap();
-        return menuPanelY() + menuPanelHeight() * 0.24f + groupHeight - menuActionButtonHeight();
+        float groupHeight = menuActionButtonHeight() * 3f + menuButtonGap() * 2f;
+        return menuPanelY() + menuPanelHeight() * 0.12f + groupHeight - menuActionButtonHeight();
+    }
+
+    static float settingsButtonX() {
+        return playButtonX();
+    }
+
+    static float settingsButtonY() {
+        return playButtonY() - menuActionButtonHeight() - menuButtonGap();
     }
 
     static float exitButtonX() {
@@ -137,7 +145,7 @@ final class GameLayout {
     }
 
     static float exitButtonY() {
-        return playButtonY() - menuActionButtonHeight() - menuButtonGap();
+        return settingsButtonY() - menuActionButtonHeight() - menuButtonGap();
     }
 
     static float menuButtonGap() {
@@ -156,6 +164,17 @@ final class GameLayout {
         return isPlayButtonHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
     }
 
+    static boolean isSettingsButtonHit(int screenX, int worldY) {
+        return screenX >= settingsButtonX()
+            && screenX <= settingsButtonX() + menuButtonWidth()
+            && worldY >= settingsButtonY()
+            && worldY <= settingsButtonY() + menuActionButtonHeight();
+    }
+
+    static boolean isSettingsButtonHovering() {
+        return isSettingsButtonHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
+    }
+
     static boolean isExitButtonHit(int screenX, int worldY) {
         return screenX >= exitButtonX()
             && screenX <= exitButtonX() + menuButtonWidth()
@@ -168,7 +187,7 @@ final class GameLayout {
     }
 
     static float hudScale(float multiplier) {
-        return multiplier * MathUtils.clamp(uiScale(), 0.58f, 1.05f);
+        return multiplier * MathUtils.clamp(Math.min(Gdx.graphics.getWidth() / 540f, Gdx.graphics.getHeight() / 960f), 0.72f, 1.32f);
     }
 
     static float uiScale() {

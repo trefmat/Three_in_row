@@ -31,6 +31,13 @@ public class Main extends ApplicationAdapter {
     private static final float RESTART_ANIMATION_TIME = 1.05f;
     private static final float BOOSTER_DRAW_SCALE = 1.16f;
     private static final float ROCKET_DRAW_SCALE = 1.30f;
+    private static final int AUDIO_PREV = 0;
+    private static final int AUDIO_NEXT = 1;
+    private static final int SETTINGS_BGM_DOWN = 0;
+    private static final int SETTINGS_BGM_UP = 1;
+    private static final int SETTINGS_SFX_DOWN = 2;
+    private static final int SETTINGS_SFX_UP = 3;
+    private static final int SETTINGS_BACK = 4;
 
     private final int[][] board = new int[BOARD_SIZE][BOARD_SIZE];
     private final float[][] drawRows = new float[BOARD_SIZE][BOARD_SIZE];
@@ -54,6 +61,7 @@ public class Main extends ApplicationAdapter {
     private ShapeRenderer shapes;
     private BitmapFont font;
     private GlyphLayout glyphLayout;
+    private GameAudio audio;
     private Texture background;
     private Texture restartIcon;
 
@@ -96,6 +104,8 @@ public class Main extends ApplicationAdapter {
         font = new BitmapFont();
         font.getData().setScale(1f);
         glyphLayout = new GlyphLayout();
+        audio = new GameAudio();
+        audio.load();
         background = createBackgroundTexture();
         restartIcon = new Texture(Gdx.files.internal("restart.png"));
         restartIcon.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
@@ -167,6 +177,14 @@ public class Main extends ApplicationAdapter {
                     return false;
                 }
 
+                if (gameScreen == GameScreen.SETTINGS) {
+                    if (keycode == Input.Keys.ESCAPE || keycode == Input.Keys.BACK) {
+                        openMainMenu();
+                        return true;
+                    }
+                    return false;
+                }
+
                 if (keycode == Input.Keys.ESCAPE || keycode == Input.Keys.BACK) {
                     openMainMenu();
                     return true;
@@ -184,12 +202,21 @@ public class Main extends ApplicationAdapter {
     public void render() {
         float delta = Gdx.graphics.getDeltaTime();
         menuTime += delta;
+        audio.update();
 
         if (gameScreen == GameScreen.MENU) {
             Gdx.gl.glClearColor(0.045f, 0.05f, 0.075f, 1f);
             Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
             drawBackground();
             drawMainMenu();
+            return;
+        }
+
+        if (gameScreen == GameScreen.SETTINGS) {
+            Gdx.gl.glClearColor(0.045f, 0.05f, 0.075f, 1f);
+            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+            drawBackground();
+            drawSettingsMenu();
             return;
         }
 
@@ -207,6 +234,11 @@ public class Main extends ApplicationAdapter {
     }
 
     private void handleBoardTap(int screenX, int screenY) {
+        int worldY = Gdx.graphics.getHeight() - screenY;
+        if (handleAudioButtonTap(screenX, worldY)) {
+            return;
+        }
+
         if (restartAnimating) {
             return;
         }
@@ -215,7 +247,6 @@ public class Main extends ApplicationAdapter {
             return;
         }
 
-        int worldY = Gdx.graphics.getHeight() - screenY;
         if (isRestartButtonHit(screenX, worldY)) {
             beginRestartAnimation();
             return;
@@ -259,6 +290,20 @@ public class Main extends ApplicationAdapter {
         }
     }
 
+    private boolean handleAudioButtonTap(int screenX, int worldY) {
+        for (int button = AUDIO_PREV; button <= AUDIO_NEXT; button++) {
+            if (isAudioButtonHit(button, screenX, worldY)) {
+                if (button == AUDIO_PREV) {
+                    audio.previousTrack();
+                } else {
+                    audio.nextTrack();
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void beginTouch(int screenX, int screenY, int pointer) {
         activeTouchPointer = pointer;
         touchStartX = screenX;
@@ -276,6 +321,13 @@ public class Main extends ApplicationAdapter {
             return;
         }
 
+        if (gameScreen == GameScreen.SETTINGS) {
+            handleSettingsTap(screenX, Gdx.graphics.getHeight() - screenY);
+            activeTouchPointer = -1;
+            swipeHandled = false;
+            return;
+        }
+
         if (!swipeHandled) {
             handleBoardTap(screenX, screenY);
         }
@@ -286,7 +338,7 @@ public class Main extends ApplicationAdapter {
     }
 
     private void handleSwipeDrag(int screenX, int screenY) {
-        if (gameScreen == GameScreen.MENU) {
+        if (gameScreen == GameScreen.MENU || gameScreen == GameScreen.SETTINGS) {
             return;
         }
 
@@ -520,6 +572,9 @@ public class Main extends ApplicationAdapter {
 
     private void finishBoosterBlast() {
         int removed = applyPendingClear();
+        if (removed > 0) {
+            audio.playDestroySound();
+        }
         score += removed * 10;
         clearBlastEffects();
         collapseAndFillAnimated();
@@ -529,6 +584,9 @@ public class Main extends ApplicationAdapter {
 
     private void finishMatchClear() {
         int removed = applyPendingClear();
+        if (removed > 0) {
+            audio.playDestroySound();
+        }
         score += removed * 10;
         clearBlastEffects();
         collapseAndFillAnimated();
@@ -724,19 +782,21 @@ public class Main extends ApplicationAdapter {
         }
 
         boolean activatedBooster = false;
+        boolean[][] activatedBoosters = new boolean[BOARD_SIZE][BOARD_SIZE];
         for (int row = 0; row < BOARD_SIZE; row++) {
             for (int col = 0; col < BOARD_SIZE; col++) {
                 if (!matches[row][col]) {
                     continue;
                 }
                 if (isBooster(board[row][col])) {
-                    markBoosterBlast(cellsToClear, row, col);
+                    markBoosterBlast(cellsToClear, activatedBoosters, row, col);
                     activatedBooster = true;
                 }
             }
         }
 
         if (activatedBooster) {
+            activateBoostersInBlast(cellsToClear, activatedBoosters);
             copyBooleanGrid(cellsToClear, pendingCellsToClear);
             copyBooleanGrid(matches, pendingMatches);
             copyIntGrid(boosters, pendingBoosters);
@@ -763,6 +823,7 @@ public class Main extends ApplicationAdapter {
         boolean[][] cellsToClear = new boolean[BOARD_SIZE][BOARD_SIZE];
         boolean[][] matches = new boolean[BOARD_SIZE][BOARD_SIZE];
         int[][] boosters = new int[BOARD_SIZE][BOARD_SIZE];
+        boolean[][] activatedBoosters = new boolean[BOARD_SIZE][BOARD_SIZE];
         clearBlastEffects();
 
         if (isBombRocketSwap()) {
@@ -774,9 +835,10 @@ public class Main extends ApplicationAdapter {
             blastBombs[bombRow][bombCol] = true;
             markBombBlast(cellsToClear, bombRow, bombCol);
         } else {
-            markBoosterBlast(cellsToClear, swapRowA, swapColA);
-            markBoosterBlast(cellsToClear, swapRowB, swapColB);
+            markBoosterBlast(cellsToClear, activatedBoosters, swapRowA, swapColA);
+            markBoosterBlast(cellsToClear, activatedBoosters, swapRowB, swapColB);
         }
+        activateBoostersInBlast(cellsToClear, activatedBoosters);
 
         copyBooleanGrid(cellsToClear, pendingCellsToClear);
         copyBooleanGrid(matches, pendingMatches);
@@ -797,6 +859,7 @@ public class Main extends ApplicationAdapter {
         boolean[][] cellsToClear = new boolean[BOARD_SIZE][BOARD_SIZE];
         boolean[][] matches = new boolean[BOARD_SIZE][BOARD_SIZE];
         int[][] boosters = new int[BOARD_SIZE][BOARD_SIZE];
+        boolean[][] activatedBoosters = new boolean[BOARD_SIZE][BOARD_SIZE];
         clearBlastEffects();
 
         if (lightningClearsBoard) {
@@ -815,6 +878,7 @@ public class Main extends ApplicationAdapter {
         }
         cellsToClear[swapRowA][swapColA] = true;
         cellsToClear[swapRowB][swapColB] = true;
+        activateBoostersInBlast(cellsToClear, activatedBoosters);
 
         copyBooleanGrid(cellsToClear, pendingCellsToClear);
         copyBooleanGrid(matches, pendingMatches);
@@ -856,7 +920,27 @@ public class Main extends ApplicationAdapter {
         }
     }
 
-    private void markBoosterBlast(boolean[][] cellsToClear, int row, int col) {
+    private void activateBoostersInBlast(boolean[][] cellsToClear, boolean[][] activatedBoosters) {
+        boolean activated;
+        do {
+            activated = false;
+            for (int row = 0; row < BOARD_SIZE; row++) {
+                for (int col = 0; col < BOARD_SIZE; col++) {
+                    if (cellsToClear[row][col] && isBooster(board[row][col]) && !activatedBoosters[row][col]) {
+                        markBoosterBlast(cellsToClear, activatedBoosters, row, col);
+                        activated = true;
+                    }
+                }
+            }
+        } while (activated);
+    }
+
+    private void markBoosterBlast(boolean[][] cellsToClear, boolean[][] activatedBoosters, int row, int col) {
+        if (!isInside(row, col) || activatedBoosters[row][col] || !isBooster(board[row][col])) {
+            return;
+        }
+        activatedBoosters[row][col] = true;
+        cellsToClear[row][col] = true;
         if (isRocket(board[row][col])) {
             if (isHorizontalRocket(board[row][col])) {
                 blastHorizontalRockets[row][col] = true;
@@ -1302,16 +1386,53 @@ public class Main extends ApplicationAdapter {
         fillRoundedRect(panelX + 12f, panelY + 12f, panelWidth - 24f, panelHeight - 24f, radius * 0.70f);
 
         drawMenuButtonShape(playButtonX(), playButtonY(), menuButtonWidth(), menuActionButtonHeight(), 0.12f, 0.58f, 0.90f, isPlayButtonHovering());
+        drawMenuButtonShape(settingsButtonX(), settingsButtonY(), menuButtonWidth(), menuActionButtonHeight(), 0.18f, 0.38f, 0.56f, isSettingsButtonHovering());
         drawMenuButtonShape(exitButtonX(), exitButtonY(), menuButtonWidth(), menuActionButtonHeight(), 0.18f, 0.22f, 0.32f, isExitButtonHovering());
 
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
-        drawMenuGemStrip(centerX, panelY + panelHeight * 0.65f);
-        drawCenteredText("THREE IN ROW", centerX, panelY + panelHeight * 0.83f, MathUtils.clamp(width / 660f, 0.88f, 1.28f), Color.WHITE);
-        drawCenteredText("Match crystals. Build boosters.", centerX, panelY + panelHeight * 0.52f, hudScale(0.86f), Color.valueOf("BFD7E8"));
+        drawCenteredText("THREE IN ROW", centerX, panelY + panelHeight * 0.86f, MathUtils.clamp(width / 700f, 0.74f, 1.18f), Color.WHITE);
+        drawMenuGemStrip(centerX, panelY + panelHeight * 0.73f);
+        drawCenteredText("Match crystals. Build boosters.", centerX, panelY + panelHeight * 0.61f, hudScale(0.72f), Color.valueOf("BFD7E8"));
         drawButtonText("PLAY", centerX, playButtonY() + menuActionButtonHeight() * 0.62f, hudScale(1.18f), Color.WHITE);
+        drawButtonText("SETTINGS", centerX, settingsButtonY() + menuActionButtonHeight() * 0.62f, hudScale(0.82f), Color.WHITE);
         drawButtonText("EXIT", centerX, exitButtonY() + menuActionButtonHeight() * 0.62f, hudScale(0.96f), Color.valueOf("D9E5EF"));
+    }
+
+    private void drawSettingsMenu() {
+        float width = Gdx.graphics.getWidth();
+        float centerX = width * 0.5f;
+        float panelWidth = menuPanelWidth();
+        float panelHeight = menuPanelHeight();
+        float panelX = menuPanelX();
+        float panelY = menuPanelY();
+        float radius = Math.max(18f, panelWidth * 0.04f);
+
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        shapes.setColor(0f, 0f, 0f, 0.22f);
+        shapes.rect(0f, 0f, width, Gdx.graphics.getHeight());
+        shapes.setColor(0f, 0f, 0f, 0.28f);
+        fillRoundedRect(panelX + 7f, panelY - 8f, panelWidth, panelHeight, radius);
+        shapes.setColor(0.045f, 0.055f, 0.085f, 0.96f);
+        fillRoundedRect(panelX, panelY, panelWidth, panelHeight, radius);
+        shapes.setColor(0.15f, 0.28f, 0.40f, 0.30f);
+        fillRoundedRect(panelX + 12f, panelY + 12f, panelWidth - 24f, panelHeight - 24f, radius * 0.70f);
+        for (int button = SETTINGS_BGM_DOWN; button <= SETTINGS_BACK; button++) {
+            drawMenuButtonShape(settingsControlX(button), settingsControlY(button), settingsControlWidth(button), settingsControlHeight(), 0.12f, 0.35f, 0.55f, isSettingsControlHovering(button));
+        }
+        shapes.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        drawCenteredText("SETTINGS", centerX, panelY + panelHeight * 0.82f, MathUtils.clamp(width / 720f, 0.78f, 1.12f), Color.WHITE);
+        drawCenteredText("BGM " + volumePercent(audio.musicVolume()), centerX, settingsControlY(SETTINGS_BGM_DOWN) + settingsControlHeight() * 1.48f, hudScale(0.72f), Color.valueOf("8DCFFF"));
+        drawCenteredText("DESTROY SFX " + volumePercent(audio.destroyVolume()), centerX, settingsControlY(SETTINGS_SFX_DOWN) + settingsControlHeight() * 1.48f, hudScale(0.72f), Color.valueOf("8DCFFF"));
+        drawButtonText("-", settingsControlCenterX(SETTINGS_BGM_DOWN), settingsControlTextY(SETTINGS_BGM_DOWN), hudScale(1.00f), Color.WHITE);
+        drawButtonText("+", settingsControlCenterX(SETTINGS_BGM_UP), settingsControlTextY(SETTINGS_BGM_UP), hudScale(1.00f), Color.WHITE);
+        drawButtonText("-", settingsControlCenterX(SETTINGS_SFX_DOWN), settingsControlTextY(SETTINGS_SFX_DOWN), hudScale(1.00f), Color.WHITE);
+        drawButtonText("+", settingsControlCenterX(SETTINGS_SFX_UP), settingsControlTextY(SETTINGS_SFX_UP), hudScale(1.00f), Color.WHITE);
+        drawButtonText("BACK", settingsControlCenterX(SETTINGS_BACK), settingsControlTextY(SETTINGS_BACK), hudScale(0.86f), Color.WHITE);
     }
 
     private void drawMenuGemStrip(float centerX, float centerY) {
@@ -1340,9 +1461,81 @@ public class Main extends ApplicationAdapter {
             startGame();
             return;
         }
+        if (isSettingsButtonHit(screenX, worldY)) {
+            gameScreen = GameScreen.SETTINGS;
+            return;
+        }
         if (isExitButtonHit(screenX, worldY)) {
             Gdx.app.exit();
         }
+    }
+
+    private void handleSettingsTap(int screenX, int worldY) {
+        if (isSettingsControlHit(SETTINGS_BGM_DOWN, screenX, worldY)) {
+            audio.decreaseMusicVolume();
+        } else if (isSettingsControlHit(SETTINGS_BGM_UP, screenX, worldY)) {
+            audio.increaseMusicVolume();
+        } else if (isSettingsControlHit(SETTINGS_SFX_DOWN, screenX, worldY)) {
+            audio.decreaseDestroyVolume();
+        } else if (isSettingsControlHit(SETTINGS_SFX_UP, screenX, worldY)) {
+            audio.increaseDestroyVolume();
+        } else if (isSettingsControlHit(SETTINGS_BACK, screenX, worldY)) {
+            openMainMenu();
+        }
+    }
+
+    private boolean isSettingsControlHit(int button, int screenX, int worldY) {
+        return screenX >= settingsControlX(button)
+            && screenX <= settingsControlX(button) + settingsControlWidth(button)
+            && worldY >= settingsControlY(button)
+            && worldY <= settingsControlY(button) + settingsControlHeight();
+    }
+
+    private boolean isSettingsControlHovering(int button) {
+        return isSettingsControlHit(button, Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
+    }
+
+    private float settingsControlX(int button) {
+        float centerX = Gdx.graphics.getWidth() * 0.5f;
+        float gap = settingsControlHeight() * 0.32f;
+        if (button == SETTINGS_BGM_DOWN || button == SETTINGS_SFX_DOWN) {
+            return centerX - settingsControlWidth(button) - gap * 0.5f;
+        }
+        if (button == SETTINGS_BGM_UP || button == SETTINGS_SFX_UP) {
+            return centerX + gap * 0.5f;
+        }
+        return centerX - settingsControlWidth(button) * 0.5f;
+    }
+
+    private float settingsControlY(int button) {
+        float panelY = menuPanelY();
+        float panelHeight = menuPanelHeight();
+        if (button == SETTINGS_BGM_DOWN || button == SETTINGS_BGM_UP) {
+            return panelY + panelHeight * 0.50f;
+        }
+        if (button == SETTINGS_SFX_DOWN || button == SETTINGS_SFX_UP) {
+            return panelY + panelHeight * 0.31f;
+        }
+        return panelY + panelHeight * 0.12f;
+    }
+
+    private float settingsControlWidth(int button) {
+        if (button == SETTINGS_BACK) {
+            return menuButtonWidth() * 0.72f;
+        }
+        return settingsControlHeight() * 1.45f;
+    }
+
+    private float settingsControlHeight() {
+        return menuActionButtonHeight() * 0.86f;
+    }
+
+    private float settingsControlCenterX(int button) {
+        return settingsControlX(button) + settingsControlWidth(button) * 0.5f;
+    }
+
+    private float settingsControlTextY(int button) {
+        return settingsControlY(button) + settingsControlHeight() * 0.62f;
     }
 
     private void drawBoardBackground() {
@@ -1405,7 +1598,14 @@ public class Main extends ApplicationAdapter {
         float padding = Math.max(5f, cell * 0.09f);
         float clearProgress = animationState == AnimationState.MATCH_CLEAR ? Math.min(1f, animationTimer / animationDuration) : 0f;
         float clearEased = Interpolation.smooth.apply(clearProgress);
+        float boardX = boardX();
+        float boardY = boardY();
+        int scissorX = MathUtils.floor(boardX);
+        int scissorY = MathUtils.floor(boardY);
+        int scissorSize = MathUtils.ceil(cell * BOARD_SIZE);
 
+        Gdx.gl.glEnable(GL20.GL_SCISSOR_TEST);
+        Gdx.gl.glScissor(scissorX, scissorY, scissorSize, scissorSize);
         batch.begin();
         for (int row = 0; row < BOARD_SIZE; row++) {
             for (int col = 0; col < BOARD_SIZE; col++) {
@@ -1433,11 +1633,12 @@ public class Main extends ApplicationAdapter {
                 } else {
                     batch.setColor(Color.WHITE);
                 }
-                drawCellTexture(gem, boardX() + drawCols[row][col] * cell + localPadding, boardY() + drawRows[row][col] * cell + localPadding, size);
+                drawCellTexture(gem, boardX + drawCols[row][col] * cell + localPadding, boardY + drawRows[row][col] * cell + localPadding, size);
             }
         }
         batch.setColor(Color.WHITE);
         batch.end();
+        Gdx.gl.glDisable(GL20.GL_SCISSOR_TEST);
     }
 
     private void drawCellTexture(int gem, float x, float y, float size) {
@@ -1456,22 +1657,31 @@ public class Main extends ApplicationAdapter {
 
     private void drawBoosterTextureGlow(int gem, Texture texture, float x, float y, float size) {
         Color previous = new Color(batch.getColor());
-        float pulse = 0.5f + 0.5f * MathUtils.sin(menuTime * 3.2f);
+        float wave = (menuTime * 0.95f) % 1f;
+        float delayedWave = (wave + 0.48f) % 1f;
         Color glow = boosterGlowColor(gem);
-        float haloSize = size * (1.34f + pulse * 0.06f);
-        float outlineSize = size * (1.09f + pulse * 0.02f);
-        float outlineOffset = size * (0.045f + pulse * 0.012f);
+        float outlineSize = size * 1.10f;
+        float outlineOffset = size * 0.055f;
 
-        batch.setColor(glow.r, glow.g, glow.b, previous.a * (0.36f + pulse * 0.16f));
-        drawCellTextureRaw(gem, texture, x - (haloSize - size) * 0.5f, y - (haloSize - size) * 0.5f, haloSize);
-        batch.setColor(glow.r, glow.g, glow.b, previous.a * (0.46f + pulse * 0.14f));
+        drawBoosterGlowWave(gem, texture, x, y, size, glow, previous.a, wave);
+        drawBoosterGlowWave(gem, texture, x, y, size, glow, previous.a, delayedWave);
+        batch.setColor(glow.r, glow.g, glow.b, previous.a * 0.42f);
         drawCellTextureRaw(gem, texture, x - outlineOffset, y, outlineSize);
         drawCellTextureRaw(gem, texture, x + outlineOffset, y, outlineSize);
         drawCellTextureRaw(gem, texture, x, y - outlineOffset, outlineSize);
         drawCellTextureRaw(gem, texture, x, y + outlineOffset, outlineSize);
-        batch.setColor(1f, 1f, 1f, previous.a * (0.22f + pulse * 0.08f));
+        batch.setColor(1f, 1f, 1f, previous.a * 0.22f);
         drawCellTextureRaw(gem, texture, x - (outlineSize - size) * 0.5f, y - (outlineSize - size) * 0.5f, outlineSize);
         batch.setColor(previous);
+    }
+
+    private void drawBoosterGlowWave(int gem, Texture texture, float x, float y, float size, Color glow, float baseAlpha, float wave) {
+        float eased = Interpolation.smooth.apply(wave);
+        float waveSize = size * (1.22f + eased * 0.72f);
+        float alpha = baseAlpha * (0.40f * (1f - wave));
+
+        batch.setColor(glow.r, glow.g, glow.b, alpha);
+        drawCellTextureRaw(gem, texture, x - (waveSize - size) * 0.5f, y - (waveSize - size) * 0.5f, waveSize);
     }
 
     private Color boosterGlowColor(int gem) {
@@ -1616,13 +1826,79 @@ public class Main extends ApplicationAdapter {
         drawTopScorePanel();
         drawRestartButtonShape();
         drawHudMenuButtonShape();
+        drawAudioControlShapes();
         drawScoreNumberShapes(scoreText);
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
         drawRestartButtonIcon();
         drawHudMenuButtonText();
+        drawAudioControlText();
         drawScoreLabel(scoreText);
+    }
+
+    private void drawAudioControlShapes() {
+        for (int button = AUDIO_PREV; button <= AUDIO_NEXT; button++) {
+            drawSoftButton(audioButtonX(button), audioButtonY(button), audioButtonWidth(button), audioButtonHeight(), 0.10f, 0.20f, 0.31f, 0.24f, isAudioButtonHovering(button));
+        }
+    }
+
+    private void drawAudioControlText() {
+        drawButtonText("<<", audioButtonCenterX(AUDIO_PREV), audioButtonTextY(AUDIO_PREV), hudScale(0.66f), Color.WHITE);
+        drawButtonText(">>", audioButtonCenterX(AUDIO_NEXT), audioButtonTextY(AUDIO_NEXT), hudScale(0.66f), Color.WHITE);
+        drawCenteredText(audio.trackLabel(), audioButtonCenterX(AUDIO_PREV, AUDIO_NEXT), audioButtonY(AUDIO_PREV) - audioButtonHeight() * 0.15f, hudScale(0.38f), Color.valueOf("8DCFFF"));
+    }
+
+    private boolean isAudioButtonHit(int button, int screenX, int worldY) {
+        return screenX >= audioButtonX(button)
+            && screenX <= audioButtonX(button) + audioButtonWidth(button)
+            && worldY >= audioButtonY(button)
+            && worldY <= audioButtonY(button) + audioButtonHeight();
+    }
+
+    private boolean isAudioButtonHovering(int button) {
+        return isAudioButtonHit(button, Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
+    }
+
+    private float audioButtonX(int button) {
+        float gap = audioButtonGap();
+        float startX = restartButtonX() + restartButtonWidth() + menuButtonGap();
+        if (button == AUDIO_NEXT) {
+            return startX + audioButtonWidth(AUDIO_PREV) + gap;
+        }
+        return startX;
+    }
+
+    private float audioButtonY(int button) {
+        return restartButtonY();
+    }
+
+    private float audioButtonWidth(int button) {
+        return audioButtonHeight() * 1.18f;
+    }
+
+    private float audioButtonHeight() {
+        return MathUtils.clamp(shortSide() * 0.065f, 34f * uiScale(), 62f * uiScale());
+    }
+
+    private float audioButtonGap() {
+        return Math.max(5f, audioButtonHeight() * 0.16f);
+    }
+
+    private float audioButtonCenterX(int button) {
+        return audioButtonX(button) + audioButtonWidth(button) * 0.5f;
+    }
+
+    private float audioButtonCenterX(int leftButton, int rightButton) {
+        return (audioButtonX(leftButton) + audioButtonX(rightButton) + audioButtonWidth(rightButton)) * 0.5f;
+    }
+
+    private float audioButtonTextY(int button) {
+        return audioButtonY(button) + audioButtonHeight() * 0.60f;
+    }
+
+    private String volumePercent(float volume) {
+        return MathUtils.round(volume * 100f) + "%";
     }
 
     private void drawTopScorePanel() {
@@ -1908,6 +2184,7 @@ public class Main extends ApplicationAdapter {
         font.dispose();
         background.dispose();
         restartIcon.dispose();
+        audio.dispose();
         for (Texture texture : gemTextures) {
             texture.dispose();
         }

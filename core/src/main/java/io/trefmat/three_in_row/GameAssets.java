@@ -90,6 +90,12 @@ final class GameAssets {
         if (texture != null) {
             return texture;
         }
+        FileHandle zap = Gdx.files.internal("zap.png");
+        if (zap.exists()) {
+            texture = new Texture(zap);
+            texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            return texture;
+        }
         return createLightningTexture(fallbackColor);
     }
 
