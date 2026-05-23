@@ -51,18 +51,18 @@ final class CellType {
     }
 
     static boolean isHorizontalRocket(int cell) {
-        return cell >= ROCKET_HORIZONTAL && cell < ROCKET_HORIZONTAL + GameConfig.GEM_TYPES;
+        return cell >= ROCKET_HORIZONTAL && cell < ROCKET_HORIZONTAL + Main.GEM_TYPES;
     }
 
     static boolean isVerticalRocket(int cell) {
-        return cell >= ROCKET_VERTICAL && cell < ROCKET_VERTICAL + GameConfig.GEM_TYPES;
+        return cell >= ROCKET_VERTICAL && cell < ROCKET_VERTICAL + Main.GEM_TYPES;
     }
 
     static boolean isBomb(int cell) {
-        return cell >= BOMB && cell < BOMB + GameConfig.GEM_TYPES;
+        return cell >= BOMB && cell < BOMB + Main.GEM_TYPES;
     }
 
     static boolean isLightning(int cell) {
-        return cell >= LIGHTNING && cell < LIGHTNING + GameConfig.GEM_TYPES;
+        return cell >= LIGHTNING && cell < LIGHTNING + Main.GEM_TYPES;
     }
 }

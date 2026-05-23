@@ -3,12 +3,12 @@ package io.trefmat.three_in_row;
 import static io.trefmat.three_in_row.GameLayout.*;
 import static io.trefmat.three_in_row.GameAssets.*;
 import static io.trefmat.three_in_row.CellType.*;
-import static io.trefmat.three_in_row.GameConfig.*;
 
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
+import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
@@ -18,26 +18,54 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Interpolation;
 import com.badlogic.gdx.math.MathUtils;
+import io.trefmat.three_in_row.MusicImportHandler.MusicImportCallback;
 
 /** {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms. */
 public class Main extends ApplicationAdapter {
+    static final int BOARD_SIZE = 8;
+    static final int GEM_TYPES = 6;
+
+    private enum GameScreen {
+        MENU,
+        SETTINGS,
+        PLAYING
+    }
+
+    private enum AnimationState {
+        IDLE,
+        VALID_SWAP,
+        LIGHTNING_SWAP,
+        BOOSTER_SWAP,
+        INVALID_SWAP_OUT,
+        INVALID_SWAP_BACK,
+        MATCH_CLEAR,
+        BOOSTER_BLAST,
+        FALLING
+    }
+
     private static final String[] GEM_COLOR_NAMES = {"blue", "green", "red", "yellow", "purple", "orange"};
     private static final float INVALID_FLASH_TIME = 0.25f;
     private static final float SWAP_TIME = 0.18f;
     private static final float FALL_TIME = 0.28f;
     private static final float INVALID_SWAP_TIME = 0.13f;
     private static final float MATCH_CLEAR_TIME = 0.22f;
-    private static final float BOOSTER_BLAST_TIME = 0.36f;
+    private static final float BOOSTER_BLAST_TIME = 0.62f;
     private static final float RESTART_ANIMATION_TIME = 1.05f;
     private static final float BOOSTER_DRAW_SCALE = 1.16f;
     private static final float ROCKET_DRAW_SCALE = 1.30f;
+    private static final int[] LEVEL_TARGET_TYPES = {0, 1, 2, 3, 4, 5, 0, 2, 4, 1};
+    private static final int[] LEVEL_TARGET_COUNTS = {12, 14, 16, 18, 20, 22, 26, 30, 34, 40};
     private static final int AUDIO_PREV = 0;
     private static final int AUDIO_NEXT = 1;
     private static final int SETTINGS_BGM_DOWN = 0;
     private static final int SETTINGS_BGM_UP = 1;
     private static final int SETTINGS_SFX_DOWN = 2;
     private static final int SETTINGS_SFX_UP = 3;
-    private static final int SETTINGS_BACK = 4;
+    private static final int SETTINGS_LOAD_MUSIC = 4;
+    private static final int SETTINGS_BACK = 5;
+    private static final int SETTINGS_TRACK_PREV = 6;
+    private static final int SETTINGS_TRACK_NEXT = 7;
+    private static final int SETTINGS_TRACK_ROWS = 3;
 
     private final int[][] board = new int[BOARD_SIZE][BOARD_SIZE];
     private final float[][] drawRows = new float[BOARD_SIZE][BOARD_SIZE];
@@ -62,13 +90,21 @@ public class Main extends ApplicationAdapter {
     private BitmapFont font;
     private GlyphLayout glyphLayout;
     private GameAudio audio;
+    private MusicImportHandler musicImportHandler;
     private Texture background;
     private Texture restartIcon;
+    private Texture plusIcon;
+    private Texture minusIcon;
+    private Texture nextIcon;
+    private Texture previousIcon;
 
     private int selectedRow = -1;
     private int selectedCol = -1;
+    private int levelIndex;
+    private int levelCollected;
     private int score;
     private int moves;
+    private int settingsTrackScroll;
     private float invalidFlash;
     private float menuTime;
     private String statusText = "Pick a crystal";
@@ -86,7 +122,6 @@ public class Main extends ApplicationAdapter {
     private int boosterPreferredCol = -1;
     private int boosterFallbackRow = -1;
     private int boosterFallbackCol = -1;
-    private int pendingRemoved;
     private int touchStartX;
     private int touchStartY;
     private int touchStartRow = -1;
@@ -96,6 +131,13 @@ public class Main extends ApplicationAdapter {
     private boolean restartAnimating;
     private boolean restartBoardRebuilt;
     private float restartAnimationTimer;
+
+    public Main() {
+    }
+
+    public Main(MusicImportHandler musicImportHandler) {
+        this.musicImportHandler = musicImportHandler;
+    }
 
     @Override
     public void create() {
@@ -109,6 +151,10 @@ public class Main extends ApplicationAdapter {
         background = createBackgroundTexture();
         restartIcon = new Texture(Gdx.files.internal("restart.png"));
         restartIcon.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+        plusIcon = loadUiTexture("media/plus.png");
+        minusIcon = loadUiTexture("media/minus.png");
+        nextIcon = loadUiTexture("media/next.png");
+        previousIcon = loadUiTexture("media/previous.png");
 
         Color[] colors = {
             Color.valueOf("29D6FF"),
@@ -554,7 +600,9 @@ public class Main extends ApplicationAdapter {
             return;
         }
 
-        if (!hasPossibleMove()) {
+        if (isLevelComplete()) {
+            advanceLevel();
+        } else if (!hasPossibleMove()) {
             refillBoardKeepingProgress();
             syncDrawPositions();
             statusText = "Board reshuffled";
@@ -801,7 +849,6 @@ public class Main extends ApplicationAdapter {
             copyBooleanGrid(matches, pendingMatches);
             copyIntGrid(boosters, pendingBoosters);
             copyBooleanGrid(cellsToClear, blastCells);
-            pendingRemoved = countCells(cellsToClear);
             clearBoosterPlacementHints();
             statusText = "Booster blast";
             beginAnimation(AnimationState.BOOSTER_BLAST, BOOSTER_BLAST_TIME);
@@ -812,7 +859,6 @@ public class Main extends ApplicationAdapter {
         copyBooleanGrid(matches, pendingMatches);
         copyIntGrid(boosters, pendingBoosters);
         copyBooleanGrid(cellsToClear, blastCells);
-        pendingRemoved = countCells(cellsToClear);
         clearBoosterPlacementHints();
         statusText = "Match cleared";
         beginAnimation(AnimationState.MATCH_CLEAR, MATCH_CLEAR_TIME);
@@ -844,7 +890,6 @@ public class Main extends ApplicationAdapter {
         copyBooleanGrid(matches, pendingMatches);
         copyIntGrid(boosters, pendingBoosters);
         copyBooleanGrid(cellsToClear, blastCells);
-        pendingRemoved = countCells(cellsToClear);
         clearBoosterPlacementHints();
         statusText = "Booster blast";
         beginAnimation(AnimationState.BOOSTER_BLAST, BOOSTER_BLAST_TIME);
@@ -884,7 +929,6 @@ public class Main extends ApplicationAdapter {
         copyBooleanGrid(matches, pendingMatches);
         copyIntGrid(boosters, pendingBoosters);
         copyBooleanGrid(cellsToClear, blastCells);
-        pendingRemoved = countCells(cellsToClear);
         lightningTargetType = -1;
         lightningClearsBoard = false;
         clearBoosterPlacementHints();
@@ -974,6 +1018,7 @@ public class Main extends ApplicationAdapter {
         for (int row = 0; row < BOARD_SIZE; row++) {
             for (int col = 0; col < BOARD_SIZE; col++) {
                 if (cellsToClear[row][col]) {
+                    collectLevelTarget(board[row][col]);
                     removed++;
                     if (matches[row][col] && boosters[row][col] != 0 && !isBooster(board[row][col])) {
                         board[row][col] = boosters[row][col];
@@ -1013,23 +1058,10 @@ public class Main extends ApplicationAdapter {
         }
     }
 
-    private int countCells(boolean[][] cells) {
-        int count = 0;
-        for (int row = 0; row < BOARD_SIZE; row++) {
-            for (int col = 0; col < BOARD_SIZE; col++) {
-                if (cells[row][col]) {
-                    count++;
-                }
-            }
-        }
-        return count;
-    }
-
     private void clearPendingClear() {
         clearBooleanGrid(pendingCellsToClear);
         clearBooleanGrid(pendingMatches);
         clearIntGrid(pendingBoosters);
-        pendingRemoved = 0;
     }
 
     private void clearBlastEffects() {
@@ -1240,38 +1272,14 @@ public class Main extends ApplicationAdapter {
         boosterFallbackCol = -1;
     }
 
-    private void collapseColumns() {
-        for (int col = 0; col < BOARD_SIZE; col++) {
-            int writeRow = 0;
-            for (int row = 0; row < BOARD_SIZE; row++) {
-                if (board[row][col] != EMPTY) {
-                    board[writeRow][col] = board[row][col];
-                    if (writeRow != row) {
-                        board[row][col] = EMPTY;
-                    }
-                    writeRow++;
-                }
-            }
-        }
-    }
-
-    private void fillEmptyCells() {
-        for (int row = 0; row < BOARD_SIZE; row++) {
-            for (int col = 0; col < BOARD_SIZE; col++) {
-                if (board[row][col] == EMPTY) {
-                    board[row][col] = randomGem();
-                }
-            }
-        }
-    }
-
     private void resetBoard() {
         score = 0;
         moves = 0;
+        levelCollected = 0;
         selectedRow = -1;
         selectedCol = -1;
         invalidFlash = 0f;
-        statusText = "Pick a crystal";
+        statusText = levelGoalStatusText();
         animationState = AnimationState.IDLE;
         clearBoosterPlacementHints();
         clearPendingClear();
@@ -1281,10 +1289,43 @@ public class Main extends ApplicationAdapter {
     }
 
     private void startGame() {
+        levelIndex = 0;
         resetBoard();
         gameScreen = GameScreen.PLAYING;
         activeTouchPointer = -1;
         swipeHandled = false;
+    }
+
+    private void collectLevelTarget(int cell) {
+        if (cell == EMPTY || isLevelComplete()) {
+            return;
+        }
+        if (baseGemType(cell) == levelTargetType()) {
+            levelCollected = Math.min(levelTargetCount(), levelCollected + 1);
+        }
+    }
+
+    private boolean isLevelComplete() {
+        return levelCollected >= levelTargetCount();
+    }
+
+    private void advanceLevel() {
+        levelIndex++;
+        resetBoard();
+        statusText = levelGoalStatusText();
+    }
+
+    private int levelTargetType() {
+        return LEVEL_TARGET_TYPES[levelIndex % LEVEL_TARGET_TYPES.length];
+    }
+
+    private int levelTargetCount() {
+        int cycle = levelIndex / LEVEL_TARGET_COUNTS.length;
+        return LEVEL_TARGET_COUNTS[levelIndex % LEVEL_TARGET_COUNTS.length] + cycle * 8;
+    }
+
+    private String levelGoalStatusText() {
+        return "Collect " + levelTargetCount() + " " + GEM_COLOR_NAMES[levelTargetType()];
     }
 
     private void openMainMenu() {
@@ -1392,12 +1433,12 @@ public class Main extends ApplicationAdapter {
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
-        drawCenteredText("THREE IN ROW", centerX, panelY + panelHeight * 0.86f, MathUtils.clamp(width / 700f, 0.74f, 1.18f), Color.WHITE);
+        drawCenteredText("THREE IN ROW", centerX, panelY + panelHeight * 0.86f, menuTextScale(0.78f), Color.WHITE);
         drawMenuGemStrip(centerX, panelY + panelHeight * 0.73f);
-        drawCenteredText("Match crystals. Build boosters.", centerX, panelY + panelHeight * 0.61f, hudScale(0.72f), Color.valueOf("BFD7E8"));
-        drawButtonText("PLAY", centerX, playButtonY() + menuActionButtonHeight() * 0.62f, hudScale(1.18f), Color.WHITE);
-        drawButtonText("SETTINGS", centerX, settingsButtonY() + menuActionButtonHeight() * 0.62f, hudScale(0.82f), Color.WHITE);
-        drawButtonText("EXIT", centerX, exitButtonY() + menuActionButtonHeight() * 0.62f, hudScale(0.96f), Color.valueOf("D9E5EF"));
+        drawCenteredText("Match crystals. Build boosters.", centerX, panelY + panelHeight * 0.61f, menuTextScale(0.34f), Color.valueOf("BFD7E8"));
+        drawButtonText("PLAY", centerX, playButtonY() + menuActionButtonHeight() * 0.66f, menuTextScale(0.72f), Color.WHITE);
+        drawButtonText("SETTINGS", centerX, settingsButtonY() + menuActionButtonHeight() * 0.66f, menuTextScale(0.50f), Color.WHITE);
+        drawButtonText("EXIT", centerX, exitButtonY() + menuActionButtonHeight() * 0.66f, menuTextScale(0.58f), Color.valueOf("D9E5EF"));
     }
 
     private void drawSettingsMenu() {
@@ -1419,25 +1460,65 @@ public class Main extends ApplicationAdapter {
         fillRoundedRect(panelX, panelY, panelWidth, panelHeight, radius);
         shapes.setColor(0.15f, 0.28f, 0.40f, 0.30f);
         fillRoundedRect(panelX + 12f, panelY + 12f, panelWidth - 24f, panelHeight - 24f, radius * 0.70f);
-        for (int button = SETTINGS_BGM_DOWN; button <= SETTINGS_BACK; button++) {
+        for (int button = SETTINGS_BGM_DOWN; button <= SETTINGS_TRACK_NEXT; button++) {
             drawMenuButtonShape(settingsControlX(button), settingsControlY(button), settingsControlWidth(button), settingsControlHeight(), 0.12f, 0.35f, 0.55f, isSettingsControlHovering(button));
         }
+        drawPlaylistRows(panelX, panelY, panelWidth, panelHeight);
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
-        drawCenteredText("SETTINGS", centerX, panelY + panelHeight * 0.82f, MathUtils.clamp(width / 720f, 0.78f, 1.12f), Color.WHITE);
-        drawCenteredText("BGM " + volumePercent(audio.musicVolume()), centerX, settingsControlY(SETTINGS_BGM_DOWN) + settingsControlHeight() * 1.48f, hudScale(0.72f), Color.valueOf("8DCFFF"));
-        drawCenteredText("DESTROY SFX " + volumePercent(audio.destroyVolume()), centerX, settingsControlY(SETTINGS_SFX_DOWN) + settingsControlHeight() * 1.48f, hudScale(0.72f), Color.valueOf("8DCFFF"));
-        drawButtonText("-", settingsControlCenterX(SETTINGS_BGM_DOWN), settingsControlTextY(SETTINGS_BGM_DOWN), hudScale(1.00f), Color.WHITE);
-        drawButtonText("+", settingsControlCenterX(SETTINGS_BGM_UP), settingsControlTextY(SETTINGS_BGM_UP), hudScale(1.00f), Color.WHITE);
-        drawButtonText("-", settingsControlCenterX(SETTINGS_SFX_DOWN), settingsControlTextY(SETTINGS_SFX_DOWN), hudScale(1.00f), Color.WHITE);
-        drawButtonText("+", settingsControlCenterX(SETTINGS_SFX_UP), settingsControlTextY(SETTINGS_SFX_UP), hudScale(1.00f), Color.WHITE);
-        drawButtonText("BACK", settingsControlCenterX(SETTINGS_BACK), settingsControlTextY(SETTINGS_BACK), hudScale(0.86f), Color.WHITE);
+        drawCenteredText("SETTINGS", centerX, panelY + panelHeight * 0.84f, menuTextScale(0.72f), Color.WHITE);
+        drawCenteredText("PLAYLIST: " + audio.enabledTrackCount() + "/" + audio.trackCount() + " ON", centerX, panelY + panelHeight * 0.74f, menuTextScale(0.34f), Color.valueOf("8DCFFF"));
+        drawPlaylistText();
+        drawCenteredText("BGM " + volumePercent(audio.musicVolume()), centerX, settingsControlY(SETTINGS_BGM_DOWN) + settingsControlHeight() * 1.42f, menuTextScale(0.38f), Color.valueOf("8DCFFF"));
+        drawCenteredText("DESTROY SFX " + volumePercent(audio.destroyVolume()), centerX, settingsControlY(SETTINGS_SFX_DOWN) + settingsControlHeight() * 1.42f, menuTextScale(0.34f), Color.valueOf("8DCFFF"));
+        drawIconButton(minusIcon, settingsControlCenterX(SETTINGS_BGM_DOWN), settingsControlY(SETTINGS_BGM_DOWN) + settingsControlHeight() * 0.50f, settingsControlHeight() * 0.62f, Color.WHITE);
+        drawIconButton(plusIcon, settingsControlCenterX(SETTINGS_BGM_UP), settingsControlY(SETTINGS_BGM_UP) + settingsControlHeight() * 0.50f, settingsControlHeight() * 0.62f, Color.WHITE);
+        drawIconButton(minusIcon, settingsControlCenterX(SETTINGS_SFX_DOWN), settingsControlY(SETTINGS_SFX_DOWN) + settingsControlHeight() * 0.50f, settingsControlHeight() * 0.62f, Color.WHITE);
+        drawIconButton(plusIcon, settingsControlCenterX(SETTINGS_SFX_UP), settingsControlY(SETTINGS_SFX_UP) + settingsControlHeight() * 0.50f, settingsControlHeight() * 0.62f, Color.WHITE);
+        drawButtonText("LOAD MUSIC", settingsControlCenterX(SETTINGS_LOAD_MUSIC), settingsControlTextY(SETTINGS_LOAD_MUSIC), menuTextScale(0.42f), Color.WHITE);
+        drawButtonText("BACK", settingsControlCenterX(SETTINGS_BACK), settingsControlTextY(SETTINGS_BACK), menuTextScale(0.54f), Color.WHITE);
+        drawIconButton(previousIcon, settingsControlCenterX(SETTINGS_TRACK_PREV), settingsControlY(SETTINGS_TRACK_PREV) + settingsControlHeight() * 0.50f, settingsControlHeight() * 0.58f, Color.WHITE);
+        drawIconButton(nextIcon, settingsControlCenterX(SETTINGS_TRACK_NEXT), settingsControlY(SETTINGS_TRACK_NEXT) + settingsControlHeight() * 0.50f, settingsControlHeight() * 0.58f, Color.WHITE);
+    }
+
+    private void drawPlaylistRows(float panelX, float panelY, float panelWidth, float panelHeight) {
+        float rowX = playlistRowX();
+        float rowWidth = playlistRowWidth();
+        float rowHeight = playlistRowHeight();
+        for (int row = 0; row < SETTINGS_TRACK_ROWS; row++) {
+            int track = settingsTrackScroll + row;
+            float rowY = playlistRowY(row);
+            boolean enabled = audio.isTrackEnabled(track);
+            boolean hovering = isPlaylistRowHit(track, Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
+            shapes.setColor(0.06f, 0.13f, 0.19f, hovering ? 0.96f : 0.78f);
+            fillRoundedRect(rowX, rowY, rowWidth, rowHeight, rowHeight * 0.25f);
+            shapes.setColor(enabled ? 0.16f : 0.16f, enabled ? 0.58f : 0.22f, enabled ? 0.86f : 0.30f, 0.92f);
+            fillRoundedRect(rowX + rowHeight * 0.20f, rowY + rowHeight * 0.18f, rowHeight * 0.64f, rowHeight * 0.64f, rowHeight * 0.18f);
+            if (track >= audio.trackCount()) {
+                shapes.setColor(0.12f, 0.18f, 0.24f, 0.42f);
+                fillRoundedRect(rowX, rowY, rowWidth, rowHeight, rowHeight * 0.25f);
+            }
+        }
+    }
+
+    private void drawPlaylistText() {
+        for (int row = 0; row < SETTINGS_TRACK_ROWS; row++) {
+            int track = settingsTrackScroll + row;
+            if (track >= audio.trackCount()) {
+                continue;
+            }
+            float rowY = playlistRowY(row);
+            String state = audio.isTrackEnabled(track) ? "ON" : "OFF";
+            String name = clippedTrackName(audio.trackName(track));
+            Color color = audio.isTrackEnabled(track) ? Color.WHITE : Color.valueOf("8FA6B8");
+            drawCenteredText(state, playlistRowX() + playlistRowHeight() * 0.52f, rowY + playlistRowHeight() * 0.68f, menuTextScale(0.28f), Color.WHITE);
+            drawLeftText(name, playlistRowX() + playlistRowHeight() * 1.02f, rowY + playlistRowHeight() * 0.68f, menuTextScale(0.30f), color);
+        }
     }
 
     private void drawMenuGemStrip(float centerX, float centerY) {
-        float scale = uiScale();
-        float size = MathUtils.clamp(Gdx.graphics.getWidth() * 0.075f, 34f * scale, 58f * scale);
+        float size = menuPanelHeight() * 0.105f;
         float gap = size * 0.72f;
 
         batch.begin();
@@ -1456,6 +1537,10 @@ public class Main extends ApplicationAdapter {
         drawSoftButton(x, y, width, height, red, green, blue, 0.36f, active);
     }
 
+    private float menuTextScale(float multiplier) {
+        return multiplier * MathUtils.clamp(Math.min(menuPanelWidth() / 330f, menuPanelHeight() / 520f), 1.85f, 2.75f);
+    }
+
     private void handleMenuTap(int screenX, int worldY) {
         if (isPlayButtonHit(screenX, worldY)) {
             startGame();
@@ -1471,7 +1556,12 @@ public class Main extends ApplicationAdapter {
     }
 
     private void handleSettingsTap(int screenX, int worldY) {
-        if (isSettingsControlHit(SETTINGS_BGM_DOWN, screenX, worldY)) {
+        int playlistTrack = playlistTrackAt(screenX, worldY);
+        if (playlistTrack >= 0) {
+            if (!audio.toggleTrackEnabled(playlistTrack)) {
+                statusText = "Keep at least one track";
+            }
+        } else if (isSettingsControlHit(SETTINGS_BGM_DOWN, screenX, worldY)) {
             audio.decreaseMusicVolume();
         } else if (isSettingsControlHit(SETTINGS_BGM_UP, screenX, worldY)) {
             audio.increaseMusicVolume();
@@ -1479,9 +1569,37 @@ public class Main extends ApplicationAdapter {
             audio.decreaseDestroyVolume();
         } else if (isSettingsControlHit(SETTINGS_SFX_UP, screenX, worldY)) {
             audio.increaseDestroyVolume();
+        } else if (isSettingsControlHit(SETTINGS_LOAD_MUSIC, screenX, worldY)) {
+            requestCustomMusic();
         } else if (isSettingsControlHit(SETTINGS_BACK, screenX, worldY)) {
             openMainMenu();
+        } else if (isSettingsControlHit(SETTINGS_TRACK_PREV, screenX, worldY)) {
+            settingsTrackScroll = Math.max(0, settingsTrackScroll - SETTINGS_TRACK_ROWS);
+        } else if (isSettingsControlHit(SETTINGS_TRACK_NEXT, screenX, worldY)) {
+            settingsTrackScroll = Math.min(maxSettingsTrackScroll(), settingsTrackScroll + SETTINGS_TRACK_ROWS);
         }
+    }
+
+    private void requestCustomMusic() {
+        if (musicImportHandler == null) {
+            statusText = "Music loading is unavailable";
+            return;
+        }
+        musicImportHandler.requestMusicImport(new MusicImportCallback() {
+            @Override
+            public void onMusicImported(FileHandle file) {
+                if (audio.addCustomTrack(file)) {
+                    statusText = "Music added";
+                } else {
+                    statusText = "Music already in playlist";
+                }
+            }
+
+            @Override
+            public void onMusicImportFailed(String message) {
+                statusText = message;
+            }
+        });
     }
 
     private boolean isSettingsControlHit(int button, int screenX, int worldY) {
@@ -1498,6 +1616,12 @@ public class Main extends ApplicationAdapter {
     private float settingsControlX(int button) {
         float centerX = Gdx.graphics.getWidth() * 0.5f;
         float gap = settingsControlHeight() * 0.32f;
+        if (button == SETTINGS_TRACK_PREV) {
+            return centerX - playlistRowWidth() * 0.5f;
+        }
+        if (button == SETTINGS_TRACK_NEXT) {
+            return centerX + playlistRowWidth() * 0.5f - settingsControlWidth(button);
+        }
         if (button == SETTINGS_BGM_DOWN || button == SETTINGS_SFX_DOWN) {
             return centerX - settingsControlWidth(button) - gap * 0.5f;
         }
@@ -1510,24 +1634,33 @@ public class Main extends ApplicationAdapter {
     private float settingsControlY(int button) {
         float panelY = menuPanelY();
         float panelHeight = menuPanelHeight();
+        if (button == SETTINGS_TRACK_PREV || button == SETTINGS_TRACK_NEXT) {
+            return panelY + panelHeight * 0.585f;
+        }
         if (button == SETTINGS_BGM_DOWN || button == SETTINGS_BGM_UP) {
-            return panelY + panelHeight * 0.50f;
+            return panelY + panelHeight * 0.27f;
         }
         if (button == SETTINGS_SFX_DOWN || button == SETTINGS_SFX_UP) {
-            return panelY + panelHeight * 0.31f;
+            return panelY + panelHeight * 0.155f;
         }
-        return panelY + panelHeight * 0.12f;
+        if (button == SETTINGS_LOAD_MUSIC) {
+            return panelY + panelHeight * 0.075f;
+        }
+        return panelY + panelHeight * 0.005f;
     }
 
     private float settingsControlWidth(int button) {
-        if (button == SETTINGS_BACK) {
+        if (button == SETTINGS_TRACK_PREV || button == SETTINGS_TRACK_NEXT) {
+            return settingsControlHeight() * 1.05f;
+        }
+        if (button == SETTINGS_BACK || button == SETTINGS_LOAD_MUSIC) {
             return menuButtonWidth() * 0.72f;
         }
         return settingsControlHeight() * 1.45f;
     }
 
     private float settingsControlHeight() {
-        return menuActionButtonHeight() * 0.86f;
+        return menuPanelHeight() * 0.088f;
     }
 
     private float settingsControlCenterX(int button) {
@@ -1536,6 +1669,50 @@ public class Main extends ApplicationAdapter {
 
     private float settingsControlTextY(int button) {
         return settingsControlY(button) + settingsControlHeight() * 0.62f;
+    }
+
+    private float playlistRowX() {
+        return Gdx.graphics.getWidth() * 0.5f - playlistRowWidth() * 0.5f;
+    }
+
+    private float playlistRowWidth() {
+        return menuButtonWidth() * 0.86f;
+    }
+
+    private float playlistRowHeight() {
+        return menuPanelHeight() * 0.060f;
+    }
+
+    private float playlistRowY(int row) {
+        return menuPanelY() + menuPanelHeight() * 0.535f - row * playlistRowHeight() * 1.10f;
+    }
+
+    private int playlistTrackAt(int screenX, int worldY) {
+        for (int row = 0; row < SETTINGS_TRACK_ROWS; row++) {
+            int track = settingsTrackScroll + row;
+            if (isPlaylistRowHit(track, screenX, worldY)) {
+                return track;
+            }
+        }
+        return -1;
+    }
+
+    private boolean isPlaylistRowHit(int track, int screenX, int worldY) {
+        if (track < 0 || track >= audio.trackCount()) {
+            return false;
+        }
+        int row = track - settingsTrackScroll;
+        if (row < 0 || row >= SETTINGS_TRACK_ROWS) {
+            return false;
+        }
+        return screenX >= playlistRowX()
+            && screenX <= playlistRowX() + playlistRowWidth()
+            && worldY >= playlistRowY(row)
+            && worldY <= playlistRowY(row) + playlistRowHeight();
+    }
+
+    private int maxSettingsTrackScroll() {
+        return Math.max(0, audio.trackCount() - SETTINGS_TRACK_ROWS);
     }
 
     private void drawBoardBackground() {
@@ -1657,7 +1834,7 @@ public class Main extends ApplicationAdapter {
 
     private void drawBoosterTextureGlow(int gem, Texture texture, float x, float y, float size) {
         Color previous = new Color(batch.getColor());
-        float wave = (menuTime * 0.95f) % 1f;
+        float wave = (menuTime * 0.45f) % 1f;
         float delayedWave = (wave + 0.48f) % 1f;
         Color glow = boosterGlowColor(gem);
         float outlineSize = size * 1.10f;
@@ -1835,6 +2012,8 @@ public class Main extends ApplicationAdapter {
         drawHudMenuButtonText();
         drawAudioControlText();
         drawScoreLabel(scoreText);
+        drawLevelGoal();
+        drawHudStatus();
     }
 
     private void drawAudioControlShapes() {
@@ -1844,8 +2023,8 @@ public class Main extends ApplicationAdapter {
     }
 
     private void drawAudioControlText() {
-        drawButtonText("<<", audioButtonCenterX(AUDIO_PREV), audioButtonTextY(AUDIO_PREV), hudScale(0.66f), Color.WHITE);
-        drawButtonText(">>", audioButtonCenterX(AUDIO_NEXT), audioButtonTextY(AUDIO_NEXT), hudScale(0.66f), Color.WHITE);
+        drawIconButton(previousIcon, audioButtonCenterX(AUDIO_PREV), audioButtonY(AUDIO_PREV) + audioButtonHeight() * 0.50f, audioButtonHeight() * 0.56f, Color.WHITE);
+        drawIconButton(nextIcon, audioButtonCenterX(AUDIO_NEXT), audioButtonY(AUDIO_NEXT) + audioButtonHeight() * 0.50f, audioButtonHeight() * 0.56f, Color.WHITE);
         drawCenteredText(audio.trackLabel(), audioButtonCenterX(AUDIO_PREV, AUDIO_NEXT), audioButtonY(AUDIO_PREV) - audioButtonHeight() * 0.15f, hudScale(0.38f), Color.valueOf("8DCFFF"));
     }
 
@@ -1878,7 +2057,7 @@ public class Main extends ApplicationAdapter {
     }
 
     private float audioButtonHeight() {
-        return MathUtils.clamp(shortSide() * 0.065f, 34f * uiScale(), 62f * uiScale());
+        return MathUtils.clamp(shortSide() * 0.078f, 44f * uiScale(), 76f * uiScale());
     }
 
     private float audioButtonGap() {
@@ -1891,10 +2070,6 @@ public class Main extends ApplicationAdapter {
 
     private float audioButtonCenterX(int leftButton, int rightButton) {
         return (audioButtonX(leftButton) + audioButtonX(rightButton) + audioButtonWidth(rightButton)) * 0.5f;
-    }
-
-    private float audioButtonTextY(int button) {
-        return audioButtonY(button) + audioButtonHeight() * 0.60f;
     }
 
     private String volumePercent(float volume) {
@@ -1955,8 +2130,8 @@ public class Main extends ApplicationAdapter {
         drawButtonText(
             "MENU",
             hudMenuButtonX() + hudMenuButtonWidth() * 0.5f,
-            hudMenuButtonY() + hudMenuButtonHeight() * 0.58f,
-            hudScale(0.86f),
+            hudMenuButtonY() + hudMenuButtonHeight() * 0.68f,
+            hudScale(0.48f),
             Color.WHITE
         );
     }
@@ -2023,6 +2198,43 @@ public class Main extends ApplicationAdapter {
         font.getData().setScale(1f);
     }
 
+    private void drawIconButton(Texture icon, float centerX, float centerY, float size, Color color) {
+        if (icon == null) {
+            return;
+        }
+        float width = size;
+        float height = size;
+        float ratio = (float) icon.getWidth() / Math.max(1f, icon.getHeight());
+        if (ratio > 1f) {
+            height = size / ratio;
+        } else {
+            width = size * ratio;
+        }
+        batch.begin();
+        batch.setColor(color);
+        batch.draw(icon, centerX - width * 0.5f, centerY - height * 0.5f, width, height);
+        batch.setColor(Color.WHITE);
+        batch.end();
+    }
+
+    private void drawLeftText(String text, float x, float baselineY, float scale, Color color) {
+        font.getData().setScale(scale);
+        batch.begin();
+        font.setColor(color);
+        font.draw(batch, text, x, baselineY);
+        batch.end();
+        font.setColor(Color.WHITE);
+        font.getData().setScale(1f);
+    }
+
+    private String clippedTrackName(String name) {
+        int maxLength = MathUtils.clamp((int)(playlistRowWidth() / Math.max(1f, menuTextScale(0.38f) * 10f)), 10, 28);
+        if (name.length() <= maxLength) {
+            return name;
+        }
+        return name.substring(0, Math.max(1, maxLength - 3)) + "...";
+    }
+
     private void drawButtonText(String text, float centerX, float baselineY, float scale, Color color) {
         drawCenteredText(text, centerX + 2f, baselineY - 2f, scale, Color.valueOf("102034"));
         drawCenteredText(text, centerX, baselineY, scale, color);
@@ -2074,10 +2286,37 @@ public class Main extends ApplicationAdapter {
         float centerX = Gdx.graphics.getWidth() * 0.5f;
         float digitY = Gdx.graphics.getHeight() - topHudHeight() * 0.74f;
         float labelY = digitY + digitHeight + digitHeight * 0.34f;
-        float textScale = hudScale(0.62f);
+        float textScale = hudScale(0.36f);
 
         drawCenteredText("SCORE", centerX + 1f, labelY - 1f, textScale, Color.valueOf("06121E"));
         drawCenteredText("SCORE", centerX, labelY, textScale, Color.valueOf("78C8FF"));
+    }
+
+    private void drawLevelGoal() {
+        float height = topHudHeight();
+        float top = Gdx.graphics.getHeight();
+        float iconSize = MathUtils.clamp(height * 0.31f, 38f * uiScale(), 66f * uiScale());
+        float leftX = Gdx.graphics.getWidth() * 0.045f;
+        float baseline = top - height * 0.48f;
+        float textScale = hudScale(0.46f);
+
+        drawCenteredText("LEVEL " + (levelIndex + 1), leftX + iconSize * 1.45f, top - height * 0.20f, hudScale(0.36f), Color.valueOf("8DCFFF"));
+
+        batch.begin();
+        batch.setColor(Color.WHITE);
+        batch.draw(gemTextures[levelTargetType()], leftX, baseline - iconSize * 0.72f, iconSize, iconSize);
+        batch.end();
+
+        String goalText = levelCollected + "/" + levelTargetCount();
+        drawCenteredText(goalText, leftX + iconSize * 2.32f, baseline, textScale, Color.WHITE);
+    }
+
+    private void drawHudStatus() {
+        float height = topHudHeight();
+        float top = Gdx.graphics.getHeight();
+        float rightX = Gdx.graphics.getWidth() * 0.88f;
+        drawCenteredText("MOVES " + moves, rightX, top - height * 0.20f, hudScale(0.34f), Color.valueOf("8DCFFF"));
+        drawCenteredText(statusText, Gdx.graphics.getWidth() * 0.5f, top - height * 0.89f, hudScale(0.28f), Color.valueOf("C6D8E8"));
     }
 
     private void drawScoreDigit(char digit, float x, float y, float width, float height) {
@@ -2177,6 +2416,12 @@ public class Main extends ApplicationAdapter {
         return MathUtils.random(GEM_TYPES - 1);
     }
 
+    private Texture loadUiTexture(String path) {
+        Texture texture = new Texture(Gdx.files.internal(path));
+        texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+        return texture;
+    }
+
     @Override
     public void dispose() {
         batch.dispose();
@@ -2184,6 +2429,10 @@ public class Main extends ApplicationAdapter {
         font.dispose();
         background.dispose();
         restartIcon.dispose();
+        plusIcon.dispose();
+        minusIcon.dispose();
+        nextIcon.dispose();
+        previousIcon.dispose();
         audio.dispose();
         for (Texture texture : gemTextures) {
             texture.dispose();
