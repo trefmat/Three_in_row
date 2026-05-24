@@ -1433,12 +1433,12 @@ public class Main extends ApplicationAdapter {
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
-        drawCenteredText("THREE IN ROW", centerX, panelY + panelHeight * 0.86f, menuTextScale(0.78f), Color.WHITE);
+        drawCenteredTextFit("THREE IN ROW", centerX, panelY + panelHeight * 0.86f, menuTextScale(1.08f), menuPanelWidth() * 0.90f, Color.WHITE);
         drawMenuGemStrip(centerX, panelY + panelHeight * 0.73f);
-        drawCenteredText("Match crystals. Build boosters.", centerX, panelY + panelHeight * 0.61f, menuTextScale(0.34f), Color.valueOf("BFD7E8"));
-        drawButtonText("PLAY", centerX, playButtonY() + menuActionButtonHeight() * 0.66f, menuTextScale(0.72f), Color.WHITE);
-        drawButtonText("SETTINGS", centerX, settingsButtonY() + menuActionButtonHeight() * 0.66f, menuTextScale(0.50f), Color.WHITE);
-        drawButtonText("EXIT", centerX, exitButtonY() + menuActionButtonHeight() * 0.66f, menuTextScale(0.58f), Color.valueOf("D9E5EF"));
+        drawCenteredTextFit("Match crystals. Build boosters.", centerX, panelY + panelHeight * 0.61f, menuTextScale(0.62f), menuPanelWidth() * 0.86f, Color.valueOf("BFD7E8"));
+        drawButtonTextFit("PLAY", centerX, playButtonY() + menuActionButtonHeight() * 0.68f, menuTextScale(1.05f), menuButtonWidth() * 0.82f, Color.WHITE);
+        drawButtonTextFit("SETTINGS", centerX, settingsButtonY() + menuActionButtonHeight() * 0.68f, menuTextScale(0.80f), menuButtonWidth() * 0.82f, Color.WHITE);
+        drawButtonTextFit("EXIT", centerX, exitButtonY() + menuActionButtonHeight() * 0.68f, menuTextScale(0.90f), menuButtonWidth() * 0.82f, Color.valueOf("D9E5EF"));
     }
 
     private void drawSettingsMenu() {
@@ -1467,17 +1467,17 @@ public class Main extends ApplicationAdapter {
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
-        drawCenteredText("SETTINGS", centerX, panelY + panelHeight * 0.84f, menuTextScale(0.72f), Color.WHITE);
-        drawCenteredText("PLAYLIST: " + audio.enabledTrackCount() + "/" + audio.trackCount() + " ON", centerX, panelY + panelHeight * 0.74f, menuTextScale(0.34f), Color.valueOf("8DCFFF"));
+        drawCenteredTextFit("SETTINGS", centerX, panelY + panelHeight * 0.84f, menuTextScale(0.86f), menuPanelWidth() * 0.86f, Color.WHITE);
+        drawCenteredTextFit("PLAYLIST: " + audio.enabledTrackCount() + "/" + audio.trackCount() + " ON", centerX, panelY + panelHeight * 0.74f, menuTextScale(0.52f), menuPanelWidth() * 0.86f, Color.valueOf("8DCFFF"));
         drawPlaylistText();
-        drawCenteredText("BGM " + volumePercent(audio.musicVolume()), centerX, settingsControlY(SETTINGS_BGM_DOWN) + settingsControlHeight() * 1.42f, menuTextScale(0.38f), Color.valueOf("8DCFFF"));
-        drawCenteredText("DESTROY SFX " + volumePercent(audio.destroyVolume()), centerX, settingsControlY(SETTINGS_SFX_DOWN) + settingsControlHeight() * 1.42f, menuTextScale(0.34f), Color.valueOf("8DCFFF"));
+        drawCenteredTextFit("BGM " + volumePercent(audio.musicVolume()), centerX, settingsControlY(SETTINGS_BGM_DOWN) + settingsControlHeight() * 1.42f, menuTextScale(0.56f), menuPanelWidth() * 0.80f, Color.valueOf("8DCFFF"));
+        drawCenteredTextFit("DESTROY SFX " + volumePercent(audio.destroyVolume()), centerX, settingsControlY(SETTINGS_SFX_DOWN) + settingsControlHeight() * 1.42f, menuTextScale(0.50f), menuPanelWidth() * 0.86f, Color.valueOf("8DCFFF"));
         drawIconButton(minusIcon, settingsControlCenterX(SETTINGS_BGM_DOWN), settingsControlY(SETTINGS_BGM_DOWN) + settingsControlHeight() * 0.50f, settingsControlHeight() * 0.62f, Color.WHITE);
         drawIconButton(plusIcon, settingsControlCenterX(SETTINGS_BGM_UP), settingsControlY(SETTINGS_BGM_UP) + settingsControlHeight() * 0.50f, settingsControlHeight() * 0.62f, Color.WHITE);
         drawIconButton(minusIcon, settingsControlCenterX(SETTINGS_SFX_DOWN), settingsControlY(SETTINGS_SFX_DOWN) + settingsControlHeight() * 0.50f, settingsControlHeight() * 0.62f, Color.WHITE);
         drawIconButton(plusIcon, settingsControlCenterX(SETTINGS_SFX_UP), settingsControlY(SETTINGS_SFX_UP) + settingsControlHeight() * 0.50f, settingsControlHeight() * 0.62f, Color.WHITE);
-        drawButtonText("LOAD MUSIC", settingsControlCenterX(SETTINGS_LOAD_MUSIC), settingsControlTextY(SETTINGS_LOAD_MUSIC), menuTextScale(0.42f), Color.WHITE);
-        drawButtonText("BACK", settingsControlCenterX(SETTINGS_BACK), settingsControlTextY(SETTINGS_BACK), menuTextScale(0.54f), Color.WHITE);
+        drawButtonTextFit("LOAD MUSIC", settingsControlCenterX(SETTINGS_LOAD_MUSIC), settingsControlTextY(SETTINGS_LOAD_MUSIC), menuTextScale(0.58f), settingsControlWidth(SETTINGS_LOAD_MUSIC) * 0.84f, Color.WHITE);
+        drawButtonTextFit("BACK", settingsControlCenterX(SETTINGS_BACK), settingsControlTextY(SETTINGS_BACK), menuTextScale(0.68f), settingsControlWidth(SETTINGS_BACK) * 0.84f, Color.WHITE);
         drawIconButton(previousIcon, settingsControlCenterX(SETTINGS_TRACK_PREV), settingsControlY(SETTINGS_TRACK_PREV) + settingsControlHeight() * 0.50f, settingsControlHeight() * 0.58f, Color.WHITE);
         drawIconButton(nextIcon, settingsControlCenterX(SETTINGS_TRACK_NEXT), settingsControlY(SETTINGS_TRACK_NEXT) + settingsControlHeight() * 0.50f, settingsControlHeight() * 0.58f, Color.WHITE);
     }
@@ -1512,8 +1512,8 @@ public class Main extends ApplicationAdapter {
             String state = audio.isTrackEnabled(track) ? "ON" : "OFF";
             String name = clippedTrackName(audio.trackName(track));
             Color color = audio.isTrackEnabled(track) ? Color.WHITE : Color.valueOf("8FA6B8");
-            drawCenteredText(state, playlistRowX() + playlistRowHeight() * 0.52f, rowY + playlistRowHeight() * 0.68f, menuTextScale(0.28f), Color.WHITE);
-            drawLeftText(name, playlistRowX() + playlistRowHeight() * 1.02f, rowY + playlistRowHeight() * 0.68f, menuTextScale(0.30f), color);
+            drawCenteredText(state, playlistRowX() + playlistRowHeight() * 0.52f, rowY + playlistRowHeight() * 0.70f, menuTextScale(0.42f), Color.WHITE);
+            drawLeftText(name, playlistRowX() + playlistRowHeight() * 1.02f, rowY + playlistRowHeight() * 0.70f, menuTextScale(0.42f), color);
         }
     }
 
@@ -1538,7 +1538,7 @@ public class Main extends ApplicationAdapter {
     }
 
     private float menuTextScale(float multiplier) {
-        return multiplier * MathUtils.clamp(Math.min(menuPanelWidth() / 330f, menuPanelHeight() / 520f), 1.85f, 2.75f);
+        return multiplier * MathUtils.clamp(Math.min(menuPanelWidth() / 330f, menuPanelHeight() / 520f), 3.35f, 4.85f);
     }
 
     private void handleMenuTap(int screenX, int worldY) {
@@ -2023,9 +2023,9 @@ public class Main extends ApplicationAdapter {
     }
 
     private void drawAudioControlText() {
-        drawIconButton(previousIcon, audioButtonCenterX(AUDIO_PREV), audioButtonY(AUDIO_PREV) + audioButtonHeight() * 0.50f, audioButtonHeight() * 0.56f, Color.WHITE);
-        drawIconButton(nextIcon, audioButtonCenterX(AUDIO_NEXT), audioButtonY(AUDIO_NEXT) + audioButtonHeight() * 0.50f, audioButtonHeight() * 0.56f, Color.WHITE);
-        drawCenteredText(audio.trackLabel(), audioButtonCenterX(AUDIO_PREV, AUDIO_NEXT), audioButtonY(AUDIO_PREV) - audioButtonHeight() * 0.15f, hudScale(0.38f), Color.valueOf("8DCFFF"));
+        drawIconButton(previousIcon, audioButtonCenterX(AUDIO_PREV), audioButtonY(AUDIO_PREV) + audioButtonHeight() * 0.50f, audioButtonHeight() * 0.66f, Color.WHITE);
+        drawIconButton(nextIcon, audioButtonCenterX(AUDIO_NEXT), audioButtonY(AUDIO_NEXT) + audioButtonHeight() * 0.50f, audioButtonHeight() * 0.66f, Color.WHITE);
+        drawCenteredText(audio.trackLabel(), audioButtonCenterX(AUDIO_PREV, AUDIO_NEXT), audioButtonY(AUDIO_PREV) - audioButtonHeight() * 0.12f, hudScale(0.42f), Color.valueOf("8DCFFF"));
     }
 
     private boolean isAudioButtonHit(int button, int screenX, int worldY) {
@@ -2053,11 +2053,11 @@ public class Main extends ApplicationAdapter {
     }
 
     private float audioButtonWidth(int button) {
-        return audioButtonHeight() * 1.18f;
+        return audioButtonHeight() * 1.26f;
     }
 
     private float audioButtonHeight() {
-        return MathUtils.clamp(shortSide() * 0.078f, 44f * uiScale(), 76f * uiScale());
+        return MathUtils.clamp(shortSide() * 0.095f, 58f * uiScale(), 94f * uiScale());
     }
 
     private float audioButtonGap() {
@@ -2130,8 +2130,8 @@ public class Main extends ApplicationAdapter {
         drawButtonText(
             "MENU",
             hudMenuButtonX() + hudMenuButtonWidth() * 0.5f,
-            hudMenuButtonY() + hudMenuButtonHeight() * 0.68f,
-            hudScale(0.48f),
+            hudMenuButtonY() + hudMenuButtonHeight() * 0.70f,
+            hudScale(0.58f),
             Color.WHITE
         );
     }
@@ -2196,6 +2196,27 @@ public class Main extends ApplicationAdapter {
         batch.end();
         font.setColor(Color.WHITE);
         font.getData().setScale(1f);
+    }
+
+    private void drawCenteredTextFit(String text, float centerX, float baselineY, float scale, float maxWidth, Color color) {
+        drawCenteredText(text, centerX, baselineY, fittedTextScale(text, scale, maxWidth), color);
+    }
+
+    private void drawButtonTextFit(String text, float centerX, float baselineY, float scale, float maxWidth, Color color) {
+        float fittedScale = fittedTextScale(text, scale, maxWidth);
+        drawCenteredText(text, centerX + 2f, baselineY - 2f, fittedScale, Color.valueOf("102034"));
+        drawCenteredText(text, centerX, baselineY, fittedScale, color);
+    }
+
+    private float fittedTextScale(String text, float scale, float maxWidth) {
+        if (maxWidth <= 0f) {
+            return scale;
+        }
+        font.getData().setScale(scale);
+        glyphLayout.setText(font, text);
+        float fittedScale = glyphLayout.width > maxWidth ? scale * maxWidth / glyphLayout.width : scale;
+        font.getData().setScale(1f);
+        return fittedScale;
     }
 
     private void drawIconButton(Texture icon, float centerX, float centerY, float size, Color color) {

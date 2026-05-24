@@ -43,7 +43,7 @@ final class GameLayout {
 
     static float restartButtonSize() {
         float scale = uiScale();
-        return MathUtils.clamp(bottomHudHeight() * 0.62f, 58f * scale, 98f * scale);
+        return MathUtils.clamp(bottomHudHeight() * 0.72f, 72f * scale, 116f * scale);
     }
 
     static float restartButtonX() {
@@ -67,7 +67,7 @@ final class GameLayout {
 
     static float hudMenuButtonWidth() {
         float scale = uiScale();
-        return MathUtils.clamp(shortSide() * 0.28f, 110f * scale, 158f * scale);
+        return MathUtils.clamp(shortSide() * 0.34f, 138f * scale, 192f * scale);
     }
 
     static float hudMenuButtonHeight() {
