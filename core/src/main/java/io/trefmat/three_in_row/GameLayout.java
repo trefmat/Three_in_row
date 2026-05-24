@@ -14,7 +14,7 @@ final class GameLayout {
 
     static float bottomHudHeight() {
         float scale = uiScale();
-        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.14f, 96f * scale, 154f * scale);
+        return MathUtils.clamp(Gdx.graphics.getHeight() * 0.16f, 118f * scale, 184f * scale);
     }
 
     static float cellSize() {
@@ -43,7 +43,7 @@ final class GameLayout {
 
     static float restartButtonSize() {
         float scale = uiScale();
-        return MathUtils.clamp(bottomHudHeight() * 0.72f, 72f * scale, 116f * scale);
+        return MathUtils.clamp(bottomHudHeight() * 0.78f, 88f * scale, 136f * scale);
     }
 
     static float restartButtonX() {
@@ -51,7 +51,7 @@ final class GameLayout {
     }
 
     static float restartButtonY() {
-        return Math.max(14f * uiScale(), bottomHudHeight() * 0.18f);
+        return Math.max(12f * uiScale(), bottomHudHeight() * 0.14f);
     }
 
     static boolean isRestartButtonHit(int screenX, int worldY) {
@@ -67,7 +67,7 @@ final class GameLayout {
 
     static float hudMenuButtonWidth() {
         float scale = uiScale();
-        return MathUtils.clamp(shortSide() * 0.34f, 138f * scale, 192f * scale);
+        return MathUtils.clamp(shortSide() * 0.38f, 160f * scale, 220f * scale);
     }
 
     static float hudMenuButtonHeight() {
