@@ -35,4 +35,32 @@ final class DesktopMusicImportHandler implements MusicImportHandler {
             }
         });
     }
+
+    @Override
+    public void requestImageImport(final MusicImportHandler.ImageImportCallback callback) {
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                JFileChooser chooser = new JFileChooser();
+                chooser.setFileFilter(new FileNameExtensionFilter("Image files", "png", "jpg", "jpeg", "webp"));
+                int result = chooser.showOpenDialog(null);
+                if (result == JFileChooser.APPROVE_OPTION) {
+                    final File file = chooser.getSelectedFile();
+                    Gdx.app.postRunnable(new Runnable() {
+                        @Override
+                        public void run() {
+                            callback.onImageImported(Gdx.files.absolute(file.getAbsolutePath()));
+                        }
+                    });
+                } else {
+                    Gdx.app.postRunnable(new Runnable() {
+                        @Override
+                        public void run() {
+                            callback.onImageImportFailed("Image loading cancelled");
+                        }
+                    });
+                }
+            }
+        });
+    }
 }

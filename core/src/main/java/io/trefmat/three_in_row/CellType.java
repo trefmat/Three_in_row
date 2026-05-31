@@ -66,3 +66,4 @@ final class CellType {
         return cell >= LIGHTNING && cell < LIGHTNING + Main.GEM_TYPES;
     }
 }
+

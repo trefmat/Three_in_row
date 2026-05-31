@@ -126,7 +126,7 @@ final class GameLayout {
     }
 
     static float playButtonY() {
-        float groupHeight = menuActionButtonHeight() * 3f + menuButtonGap() * 2f;
+        float groupHeight = menuActionButtonHeight() * 4f + menuButtonGap() * 3f;
         return menuPanelY() + menuPanelHeight() * 0.09f + groupHeight - menuActionButtonHeight();
     }
 
@@ -143,6 +143,14 @@ final class GameLayout {
     }
 
     static float exitButtonY() {
+        return texturesButtonY() - menuActionButtonHeight() - menuButtonGap();
+    }
+
+    static float texturesButtonX() {
+        return playButtonX();
+    }
+
+    static float texturesButtonY() {
         return settingsButtonY() - menuActionButtonHeight() - menuButtonGap();
     }
 
@@ -170,6 +178,17 @@ final class GameLayout {
 
     static boolean isSettingsButtonHovering() {
         return isSettingsButtonHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
+    }
+
+    static boolean isTexturesButtonHit(int screenX, int worldY) {
+        return screenX >= texturesButtonX()
+            && screenX <= texturesButtonX() + menuButtonWidth()
+            && worldY >= texturesButtonY()
+            && worldY <= texturesButtonY() + menuActionButtonHeight();
+    }
+
+    static boolean isTexturesButtonHovering() {
+        return isTexturesButtonHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
     }
 
     static boolean isExitButtonHit(int screenX, int worldY) {

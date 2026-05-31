@@ -19,18 +19,21 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Interpolation;
 import com.badlogic.gdx.math.MathUtils;
+import io.trefmat.three_in_row.MusicImportHandler.ImageImportCallback;
 import io.trefmat.three_in_row.MusicImportHandler.MusicImportCallback;
 
 /** {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms. */
 public class Main extends ApplicationAdapter {
     private static final String GAME_PREFERENCES_NAME = "three_in_row_game";
     private static final String SAVED_LEVEL_KEY = "saved_level_index";
+    private static final String GEM_TEXTURE_PATH_PREFIX = "gem_texture_";
     static final int BOARD_SIZE = 8;
     static final int GEM_TYPES = 6;
 
     private enum GameScreen {
         MENU,
         SETTINGS,
+        TEXTURES,
         PLAYING
     }
 
@@ -47,6 +50,14 @@ public class Main extends ApplicationAdapter {
     }
 
     private static final String[] GEM_COLOR_NAMES = {"blue", "green", "red", "yellow", "purple", "orange"};
+    private static final String[] DEFAULT_GEM_FILES = {
+        "gems/blue.png",
+        "gems/green.png",
+        "gems/red.png",
+        "gems/yellow.png",
+        "gems/purple.png",
+        "gems/orange.png"
+    };
     private static final float INVALID_FLASH_TIME = 0.25f;
     private static final float SWAP_TIME = 0.18f;
     private static final float FALL_TIME = 0.28f;
@@ -68,6 +79,8 @@ public class Main extends ApplicationAdapter {
     private static final int SETTINGS_TRACK_PREV = 6;
     private static final int SETTINGS_TRACK_NEXT = 7;
     private static final int SETTINGS_TRACK_ROWS = 3;
+    private static final int TEXTURE_BACK = -1;
+    private static final int TEXTURE_RESET_ALL = -2;
 
     private final int[][] board = new int[BOARD_SIZE][BOARD_SIZE];
     private final float[][] drawRows = new float[BOARD_SIZE][BOARD_SIZE];
@@ -82,6 +95,7 @@ public class Main extends ApplicationAdapter {
     private final boolean[][] blastVerticalRockets = new boolean[BOARD_SIZE][BOARD_SIZE];
     private final boolean[][] blastBombs = new boolean[BOARD_SIZE][BOARD_SIZE];
     private final Texture[] gemTextures = new Texture[GEM_TYPES];
+    private final String[] customGemTexturePaths = new String[GEM_TYPES];
     private final Texture[] rocketHorizontalTextures = new Texture[GEM_TYPES];
     private final Texture[] rocketVerticalTextures = new Texture[GEM_TYPES];
     private final Texture[] bombTextures = new Texture[GEM_TYPES];
@@ -163,16 +177,9 @@ public class Main extends ApplicationAdapter {
             Color.valueOf("A967FF"),
             Color.valueOf("FF8B3D")
         };
-        String[] gemFiles = {
-            "gems/blue.png",
-            "gems/green.png",
-            "gems/red.png",
-            "gems/yellow.png",
-            "gems/purple.png",
-            "gems/orange.png"
-        };
         for (int i = 0; i < GEM_TYPES; i++) {
-            gemTextures[i] = loadGemTexture(gemFiles[i]);
+            customGemTexturePaths[i] = loadCustomGemTexturePath(i);
+            gemTextures[i] = loadGemTextureForType(i);
             rocketVerticalTextures[i] = loadRocketTexture(GEM_COLOR_NAMES[i], colors[i], false);
             rocketHorizontalTextures[i] = rocketVerticalTextures[i];
             bombTextures[i] = loadBombTexture(GEM_COLOR_NAMES[i], colors[i]);
@@ -263,6 +270,14 @@ public class Main extends ApplicationAdapter {
             Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
             drawBackground();
             drawSettingsMenu();
+            return;
+        }
+
+        if (gameScreen == GameScreen.TEXTURES) {
+            Gdx.gl.glClearColor(0.045f, 0.05f, 0.075f, 1f);
+            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+            drawBackground();
+            drawTexturesMenu();
             return;
         }
 
@@ -369,6 +384,13 @@ public class Main extends ApplicationAdapter {
 
         if (gameScreen == GameScreen.SETTINGS) {
             handleSettingsTap(screenX, Gdx.graphics.getHeight() - screenY);
+            activeTouchPointer = -1;
+            swipeHandled = false;
+            return;
+        }
+
+        if (gameScreen == GameScreen.TEXTURES) {
+            handleTexturesTap(screenX, Gdx.graphics.getHeight() - screenY);
             activeTouchPointer = -1;
             swipeHandled = false;
             return;
@@ -1438,6 +1460,7 @@ public class Main extends ApplicationAdapter {
 
         drawMenuButtonShape(playButtonX(), playButtonY(), menuButtonWidth(), menuActionButtonHeight(), 0.12f, 0.58f, 0.90f, isPlayButtonHovering());
         drawMenuButtonShape(settingsButtonX(), settingsButtonY(), menuButtonWidth(), menuActionButtonHeight(), 0.18f, 0.38f, 0.56f, isSettingsButtonHovering());
+        drawMenuButtonShape(texturesButtonX(), texturesButtonY(), menuButtonWidth(), menuActionButtonHeight(), 0.18f, 0.42f, 0.62f, isTexturesButtonHovering());
         drawMenuButtonShape(exitButtonX(), exitButtonY(), menuButtonWidth(), menuActionButtonHeight(), 0.18f, 0.22f, 0.32f, isExitButtonHovering());
 
         shapes.end();
@@ -1448,6 +1471,7 @@ public class Main extends ApplicationAdapter {
         drawCenteredTextFit("Match crystals. Build boosters.", centerX, panelY + panelHeight * 0.61f, menuTextScale(0.62f), menuPanelWidth() * 0.86f, Color.valueOf("BFD7E8"));
         drawButtonTextInBox("PLAY", playButtonX(), playButtonY(), menuButtonWidth(), menuActionButtonHeight(), menuTextScale(1.05f), Color.WHITE);
         drawButtonTextInBox("SETTINGS", settingsButtonX(), settingsButtonY(), menuButtonWidth(), menuActionButtonHeight(), menuTextScale(0.80f), Color.WHITE);
+        drawButtonTextInBox("TEXTURES", texturesButtonX(), texturesButtonY(), menuButtonWidth(), menuActionButtonHeight(), menuTextScale(0.72f), Color.WHITE);
         drawButtonTextInBox("EXIT", exitButtonX(), exitButtonY(), menuButtonWidth(), menuActionButtonHeight(), menuTextScale(0.90f), Color.valueOf("D9E5EF"));
     }
 
@@ -1490,6 +1514,67 @@ public class Main extends ApplicationAdapter {
         drawButtonTextFit("BACK", settingsControlCenterX(SETTINGS_BACK), settingsControlTextY(SETTINGS_BACK), menuTextScale(0.68f), settingsControlWidth(SETTINGS_BACK) * 0.84f, Color.WHITE);
         drawButtonTextFit("PREVIOUS", settingsControlCenterX(SETTINGS_TRACK_PREV), settingsControlTextY(SETTINGS_TRACK_PREV), menuTextScale(0.42f), settingsControlWidth(SETTINGS_TRACK_PREV) * 0.82f, Color.WHITE);
         drawButtonTextFit("NEXT", settingsControlCenterX(SETTINGS_TRACK_NEXT), settingsControlTextY(SETTINGS_TRACK_NEXT), menuTextScale(0.50f), settingsControlWidth(SETTINGS_TRACK_NEXT) * 0.82f, Color.WHITE);
+    }
+
+    private void drawTexturesMenu() {
+        float width = Gdx.graphics.getWidth();
+        float centerX = width * 0.5f;
+        float panelWidth = menuPanelWidth();
+        float panelHeight = menuPanelHeight();
+        float panelX = menuPanelX();
+        float panelY = menuPanelY();
+        float radius = Math.max(18f, panelWidth * 0.04f);
+
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        shapes.setColor(0f, 0f, 0f, 0.22f);
+        shapes.rect(0f, 0f, width, Gdx.graphics.getHeight());
+        shapes.setColor(0f, 0f, 0f, 0.28f);
+        fillRoundedRect(panelX + 7f, panelY - 8f, panelWidth, panelHeight, radius);
+        shapes.setColor(0.045f, 0.055f, 0.085f, 0.96f);
+        fillRoundedRect(panelX, panelY, panelWidth, panelHeight, radius);
+        shapes.setColor(0.15f, 0.28f, 0.40f, 0.30f);
+        fillRoundedRect(panelX + 12f, panelY + 12f, panelWidth - 24f, panelHeight - 24f, radius * 0.70f);
+
+        for (int gem = 0; gem < GEM_TYPES; gem++) {
+            drawTextureRowShape(gem);
+        }
+        drawMenuButtonShape(textureResetAllX(), textureResetAllY(), textureWideButtonWidth(), textureActionButtonHeight(), 0.20f, 0.35f, 0.50f, isTextureResetAllHovering());
+        drawMenuButtonShape(textureBackX(), textureBackY(), textureWideButtonWidth(), textureActionButtonHeight(), 0.18f, 0.22f, 0.32f, isTextureBackHovering());
+        shapes.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        drawCenteredTextFit("TEXTURES", centerX, panelY + panelHeight * 0.86f, menuTextScale(0.86f), panelWidth * 0.86f, Color.WHITE);
+        drawCenteredTextFit("Choose custom gem images", centerX, panelY + panelHeight * 0.79f, menuTextScale(0.42f), panelWidth * 0.86f, Color.valueOf("8DCFFF"));
+        drawTextureRowText();
+        drawButtonTextFit("RESET ALL", textureResetAllCenterX(), textureResetAllY() + textureActionButtonHeight() * 0.66f, menuTextScale(0.48f), textureWideButtonWidth() * 0.84f, Color.WHITE);
+        drawButtonTextFit("BACK", textureBackCenterX(), textureBackY() + textureActionButtonHeight() * 0.66f, menuTextScale(0.58f), textureWideButtonWidth() * 0.84f, Color.WHITE);
+    }
+
+    private void drawTextureRowShape(int gem) {
+        float y = textureRowY(gem);
+        float rowHeight = textureRowHeight();
+        shapes.setColor(0.06f, 0.13f, 0.19f, isTextureRowHovering(gem) ? 0.96f : 0.78f);
+        fillRoundedRect(textureRowX(), y, textureRowWidth(), rowHeight, rowHeight * 0.22f);
+        drawMenuButtonShape(textureLoadX(gem), y + rowHeight * 0.13f, textureSmallButtonWidth(), rowHeight * 0.74f, 0.12f, 0.42f, 0.66f, isTextureLoadHovering(gem));
+        drawMenuButtonShape(textureResetX(gem), y + rowHeight * 0.13f, textureSmallButtonWidth(), rowHeight * 0.74f, 0.22f, 0.30f, 0.42f, isTextureResetHovering(gem));
+    }
+
+    private void drawTextureRowText() {
+        for (int gem = 0; gem < GEM_TYPES; gem++) {
+            float y = textureRowY(gem);
+            float rowHeight = textureRowHeight();
+            float iconSize = rowHeight * 0.78f;
+            batch.begin();
+            batch.setColor(Color.WHITE);
+            batch.draw(gemTextures[gem], textureRowX() + rowHeight * 0.14f, y + (rowHeight - iconSize) * 0.5f, iconSize, iconSize);
+            batch.end();
+
+            String state = customGemTexturePaths[gem] == null ? "DEFAULT" : "CUSTOM";
+            drawLeftText(GEM_COLOR_NAMES[gem].toUpperCase() + "  " + state, textureRowX() + rowHeight * 1.08f, y + rowHeight * 0.65f, menuTextScale(0.34f), Color.WHITE);
+            drawButtonTextFit("LOAD", textureLoadCenterX(gem), y + rowHeight * 0.63f, menuTextScale(0.34f), textureSmallButtonWidth() * 0.78f, Color.WHITE);
+            drawButtonTextFit("RESET", textureResetCenterX(gem), y + rowHeight * 0.63f, menuTextScale(0.32f), textureSmallButtonWidth() * 0.78f, Color.WHITE);
+        }
     }
 
     private void drawPlaylistRows() {
@@ -1558,6 +1643,10 @@ public class Main extends ApplicationAdapter {
         }
         if (isSettingsButtonHit(screenX, worldY)) {
             gameScreen = GameScreen.SETTINGS;
+            return;
+        }
+        if (isTexturesButtonHit(screenX, worldY)) {
+            gameScreen = GameScreen.TEXTURES;
             return;
         }
         if (isExitButtonHit(screenX, worldY)) {
@@ -1730,6 +1819,234 @@ public class Main extends ApplicationAdapter {
         int totalPages = Math.max(1, (totalTracks + SETTINGS_TRACK_ROWS - 1) / SETTINGS_TRACK_ROWS);
         int currentPage = Math.min(totalPages, settingsTrackScroll / SETTINGS_TRACK_ROWS + 1);
         return "PLAYLIST: " + audio.enabledTrackCount() + "/" + totalTracks + " ON  PAGE " + currentPage + "/" + totalPages;
+    }
+
+    private void handleTexturesTap(int screenX, int worldY) {
+        for (int gem = 0; gem < GEM_TYPES; gem++) {
+            if (isTextureLoadHit(gem, screenX, worldY)) {
+                requestCustomGemTexture(gem);
+                return;
+            }
+            if (isTextureResetHit(gem, screenX, worldY)) {
+                resetGemTexture(gem);
+                return;
+            }
+        }
+        if (isTextureResetAllHit(screenX, worldY)) {
+            resetAllGemTextures();
+        } else if (isTextureBackHit(screenX, worldY)) {
+            openMainMenu();
+        }
+    }
+
+    private void requestCustomGemTexture(final int gem) {
+        if (musicImportHandler == null) {
+            statusText = "Image loading is unavailable";
+            return;
+        }
+        musicImportHandler.requestImageImport(new ImageImportCallback() {
+            @Override
+            public void onImageImported(FileHandle file) {
+                if (setCustomGemTexture(gem, file)) {
+                    statusText = "Texture updated";
+                } else {
+                    statusText = "Could not load image";
+                }
+            }
+
+            @Override
+            public void onImageImportFailed(String message) {
+                statusText = message;
+            }
+        });
+    }
+
+    private boolean setCustomGemTexture(int gem, FileHandle file) {
+        if (file == null || !file.exists()) {
+            return false;
+        }
+        try {
+            Texture texture = new Texture(file);
+            texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            replaceGemTexture(gem, texture);
+            customGemTexturePaths[gem] = file.path();
+            saveCustomGemTexturePath(gem);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void resetGemTexture(int gem) {
+        replaceGemTexture(gem, loadGemTexture(DEFAULT_GEM_FILES[gem]));
+        customGemTexturePaths[gem] = null;
+        saveCustomGemTexturePath(gem);
+        statusText = "Texture reset";
+    }
+
+    private void resetAllGemTextures() {
+        for (int gem = 0; gem < GEM_TYPES; gem++) {
+            resetGemTexture(gem);
+        }
+        statusText = "Textures reset";
+    }
+
+    private void replaceGemTexture(int gem, Texture texture) {
+        if (gemTextures[gem] != null) {
+            gemTextures[gem].dispose();
+        }
+        gemTextures[gem] = texture;
+    }
+
+    private Texture loadGemTextureForType(int gem) {
+        String customPath = customGemTexturePaths[gem];
+        if (customPath != null && customPath.length() > 0) {
+            try {
+                FileHandle file = Gdx.files.absolute(customPath);
+                if (file.exists()) {
+                    Texture texture = new Texture(file);
+                    texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+                    return texture;
+                }
+            } catch (Exception ignored) {
+                customGemTexturePaths[gem] = null;
+            }
+        }
+        return loadGemTexture(DEFAULT_GEM_FILES[gem]);
+    }
+
+    private String loadCustomGemTexturePath(int gem) {
+        String path = gamePreferences().getString(gemTexturePreferenceKey(gem), "");
+        return path.length() == 0 ? null : path;
+    }
+
+    private void saveCustomGemTexturePath(int gem) {
+        Preferences preferences = gamePreferences();
+        if (customGemTexturePaths[gem] == null) {
+            preferences.remove(gemTexturePreferenceKey(gem));
+        } else {
+            preferences.putString(gemTexturePreferenceKey(gem), customGemTexturePaths[gem]);
+        }
+        preferences.flush();
+    }
+
+    private String gemTexturePreferenceKey(int gem) {
+        return GEM_TEXTURE_PATH_PREFIX + gem;
+    }
+
+    private float textureRowX() {
+        return Gdx.graphics.getWidth() * 0.5f - textureRowWidth() * 0.5f;
+    }
+
+    private float textureRowWidth() {
+        return menuButtonWidth() * 0.92f;
+    }
+
+    private float textureRowHeight() {
+        return menuPanelHeight() * 0.065f;
+    }
+
+    private float textureRowY(int gem) {
+        return menuPanelY() + menuPanelHeight() * 0.665f - gem * textureRowHeight() * 1.12f;
+    }
+
+    private float textureSmallButtonWidth() {
+        return textureRowWidth() * 0.21f;
+    }
+
+    private float textureLoadX(int gem) {
+        return textureRowX() + textureRowWidth() - textureSmallButtonWidth() * 2.12f;
+    }
+
+    private float textureResetX(int gem) {
+        return textureRowX() + textureRowWidth() - textureSmallButtonWidth() * 1.02f;
+    }
+
+    private float textureLoadCenterX(int gem) {
+        return textureLoadX(gem) + textureSmallButtonWidth() * 0.5f;
+    }
+
+    private float textureResetCenterX(int gem) {
+        return textureResetX(gem) + textureSmallButtonWidth() * 0.5f;
+    }
+
+    private float textureWideButtonWidth() {
+        return menuButtonWidth() * 0.68f;
+    }
+
+    private float textureActionButtonHeight() {
+        return menuPanelHeight() * 0.072f;
+    }
+
+    private float textureResetAllX() {
+        return Gdx.graphics.getWidth() * 0.5f - textureWideButtonWidth() * 0.5f;
+    }
+
+    private float textureResetAllY() {
+        return menuPanelY() + menuPanelHeight() * 0.105f;
+    }
+
+    private float textureResetAllCenterX() {
+        return textureResetAllX() + textureWideButtonWidth() * 0.5f;
+    }
+
+    private float textureBackX() {
+        return textureResetAllX();
+    }
+
+    private float textureBackY() {
+        return menuPanelY() + menuPanelHeight() * 0.025f;
+    }
+
+    private float textureBackCenterX() {
+        return textureBackX() + textureWideButtonWidth() * 0.5f;
+    }
+
+    private boolean isTextureRowHovering(int gem) {
+        return isTextureRowHit(gem, Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
+    }
+
+    private boolean isTextureRowHit(int gem, int screenX, int worldY) {
+        return screenX >= textureRowX()
+            && screenX <= textureRowX() + textureRowWidth()
+            && worldY >= textureRowY(gem)
+            && worldY <= textureRowY(gem) + textureRowHeight();
+    }
+
+    private boolean isTextureLoadHit(int gem, int screenX, int worldY) {
+        return isRectHit(screenX, worldY, textureLoadX(gem), textureRowY(gem) + textureRowHeight() * 0.13f, textureSmallButtonWidth(), textureRowHeight() * 0.74f);
+    }
+
+    private boolean isTextureResetHit(int gem, int screenX, int worldY) {
+        return isRectHit(screenX, worldY, textureResetX(gem), textureRowY(gem) + textureRowHeight() * 0.13f, textureSmallButtonWidth(), textureRowHeight() * 0.74f);
+    }
+
+    private boolean isTextureLoadHovering(int gem) {
+        return isTextureLoadHit(gem, Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
+    }
+
+    private boolean isTextureResetHovering(int gem) {
+        return isTextureResetHit(gem, Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
+    }
+
+    private boolean isTextureResetAllHit(int screenX, int worldY) {
+        return isRectHit(screenX, worldY, textureResetAllX(), textureResetAllY(), textureWideButtonWidth(), textureActionButtonHeight());
+    }
+
+    private boolean isTextureBackHit(int screenX, int worldY) {
+        return isRectHit(screenX, worldY, textureBackX(), textureBackY(), textureWideButtonWidth(), textureActionButtonHeight());
+    }
+
+    private boolean isTextureResetAllHovering() {
+        return isTextureResetAllHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
+    }
+
+    private boolean isTextureBackHovering() {
+        return isTextureBackHit(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
+    }
+
+    private boolean isRectHit(int screenX, int worldY, float x, float y, float width, float height) {
+        return screenX >= x && screenX <= x + width && worldY >= y && worldY <= y + height;
     }
 
     private void drawBoardBackground() {
