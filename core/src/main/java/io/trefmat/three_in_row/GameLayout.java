@@ -98,7 +98,7 @@ final class GameLayout {
     }
 
     static float menuActionButtonHeight() {
-        return menuPanelHeight() * 0.145f;
+        return menuPanelHeight() * 0.130f;
     }
 
     static float menuPanelWidth() {
@@ -155,7 +155,7 @@ final class GameLayout {
     }
 
     static float menuButtonGap() {
-        return menuPanelHeight() * 0.045f;
+        return menuPanelHeight() * 0.038f;
     }
 
     static boolean isPlayButtonHit(int screenX, int worldY) {

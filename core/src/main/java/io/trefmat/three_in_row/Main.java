@@ -1466,9 +1466,9 @@ public class Main extends ApplicationAdapter {
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
-        drawCenteredTextFit("THREE IN ROW", centerX, panelY + panelHeight * 0.86f, menuTextScale(1.08f), menuPanelWidth() * 0.90f, Color.WHITE);
-        drawMenuGemStrip(centerX, panelY + panelHeight * 0.73f);
-        drawCenteredTextFit("Match crystals. Build boosters.", centerX, panelY + panelHeight * 0.61f, menuTextScale(0.62f), menuPanelWidth() * 0.86f, Color.valueOf("BFD7E8"));
+        drawCenteredTextFit("THREE IN ROW", centerX, panelY + panelHeight * 0.89f, menuTextScale(1.08f), menuPanelWidth() * 0.90f, Color.WHITE);
+        drawCenteredTextFit("Match crystals. Build boosters.", centerX, panelY + panelHeight * 0.835f, menuTextScale(0.58f), menuPanelWidth() * 0.86f, Color.valueOf("BFD7E8"));
+        drawMenuGemStrip(centerX, panelY + panelHeight * 0.765f);
         drawButtonTextInBox("PLAY", playButtonX(), playButtonY(), menuButtonWidth(), menuActionButtonHeight(), menuTextScale(1.05f), Color.WHITE);
         drawButtonTextInBox("SETTINGS", settingsButtonX(), settingsButtonY(), menuButtonWidth(), menuActionButtonHeight(), menuTextScale(0.80f), Color.WHITE);
         drawButtonTextInBox("TEXTURES", texturesButtonX(), texturesButtonY(), menuButtonWidth(), menuActionButtonHeight(), menuTextScale(0.72f), Color.WHITE);
@@ -1613,8 +1613,8 @@ public class Main extends ApplicationAdapter {
     }
 
     private void drawMenuGemStrip(float centerX, float centerY) {
-        float size = menuPanelHeight() * 0.105f;
-        float gap = size * 0.72f;
+        float size = menuPanelHeight() * 0.090f;
+        float gap = size * 0.74f;
 
         batch.begin();
         batch.setColor(1f, 1f, 1f, 0.94f);
